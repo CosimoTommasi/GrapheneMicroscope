@@ -808,13 +808,6 @@ function eMapStart(sou,eve)
     global overviewXY nx ny;
     global imgMain;
     
-    answer = questdlg('Before proceeding, the current view should be set on a clean, broad background region. Do you want to proceed?',...
-        'Warning','Yes','No','Yes');
-    switch answer
-        case 'No'
-            return
-    end
-    
     flag_stopmapping = false;
     initXYZ = XYZ;
     overlap = 200;
@@ -847,7 +840,6 @@ function eMapStart(sou,eve)
     Ccorr_HSV = double(rgb2hsv(imread(corrfile)));
     Ccenter_HSV = Ccorr_HSV./Ccorr_HSV(round(Cx/2),round(Cy/2),:);
     Ccorr_HSV = Ccorr_HSV./Ccenter_HSV;
-    [Int_bg,Int_bg_HSV] = pickBgnd();
     
     outputfile={'Img #', '# of ML','max area [um^2]'};
 
@@ -872,7 +864,7 @@ function eMapStart(sou,eve)
             eSaveImg([],[],ii,nx+1);
             
             image = flipud(uint8(imgMain));
-            [flakenum, areamax] = flakeFind(image,Ccorr,Ccorr_HSV,Int_bg,Int_bg_HSV,ii);
+            [flakenum, areamax] = flakeFind(image,Ccorr,Ccorr_HSV,ii);
             if ~isempty(flakenum)
                 outputfile{index+1,1}=ii;
                 outputfile{index+1,2}=flakenum;
@@ -1236,19 +1228,19 @@ end
 function [Int,Int_HSV]=pickBgnd()
     global imgMain;
     
-    %%ADD NAVIGATION FEATURE BEFORE ACQUISITION
+    imbg = uint8(imgMain);
     
-    f = figure();
-    imbg = flipud(uint8(imgMain));
-    imshow(imbg);
-    title('Select background area in the center of the image');
-    rect = getrect();
-    imgry=imcrop(imbg, rect);
-    
-    Int = round(mean(imgry,[1,2]),3);    %vettore a 3 componenti
-    Int_HSV = round(mean(rgb2hsv(imgry),[1,2]),3);
-    
-    close(f);
+    for cc = (1:3)
+        [rgb, x] = imhist(imbg(:,:,cc));
+        [pks, locs] = findpeaks(rgb,'MinPeakDistance',5,'MinPeakHeight',1);
+        [M,i] = max(pks);
+        Int(cc) = locs(i);
+        
+        [hsv, x] = imhist(rgb2hsv(imbg(:,:,cc)));
+        [pks, locs] = findpeaks(hsv,'MinPeakDistance',5,'MinPeakHeight',1);
+        [M,i] = max(pks);
+        Int_HSV(cc) = locs(i);
+    end
 end
 function [flakenum, MAXarea] = flakeFind(flakeimg,Ccorr,Ccorr_HSV,Int_bg,Int_bg_HSV,num)
     global uscope_mm4pix;
@@ -1269,6 +1261,8 @@ function [flakenum, MAXarea] = flakeFind(flakeimg,Ccorr,Ccorr_HSV,Int_bg,Int_bg_
     areamax = 10000;
     
     box = 10;
+    
+    [Int_bg,Int_bg_HSV] = pickBgnd();
     
     % Import images and calculate contrast
     fileflake=double(flakeimg);
