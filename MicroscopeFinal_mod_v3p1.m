@@ -808,12 +808,9 @@ function eMapStart(sou,eve)
     global overviewXY nx ny;
     global imgMain;
     
-    answer = questdlg('Before proceeding, the current view should be set on a clean, broad background region. Do you want to proceed?',...
-        'Warning','Yes','No','Yes');
-    switch answer
-        case 'No'
-            return
-    end
+    searchflag = false;
+    answer = questdlg('Do you want to perform the automatic search for graphene?',...
+        'GraphIdentify','Yes','No','Yes');
     
     flag_stopmapping = false;
     initXYZ = XYZ;
@@ -834,23 +831,29 @@ function eMapStart(sou,eve)
     pt(2) = -ny/2*(uscope_sizey-overlap)*uscope_mm4pix;
     overviewXY = floor( (mapc + pt(1:2))./uscope_mm4pix - [uscope_sizex uscope_sizey]/2);
     
-    questdlg('Select image for lighting correction','Lighting correction','Ok','Ok');
-    [corrfile, corrcancel] = imgetfile();
-    if corrcancel
-        return
+    
+    switch answer
+        case 'Yes'
+            questdlg('Select image for lighting correction','Lighting correction','Ok','Ok');
+            [corrfile, corrcancel] = imgetfile();
+            if corrcancel
+                return
+            end
+            
+            Ccorr = double(rgb2gray(imread(corrfile)));
+            [Cx,Cy] = size(Ccorr);
+            Ccenter = Ccorr(round(Cx/2),round(Cy/2),:);
+            Ccorr = Ccorr/Ccenter;
+            Ccorr_HSV = double(rgb2hsv(imread(corrfile)));
+            Ccenter_HSV = Ccorr_HSV./Ccorr_HSV(round(Cx/2),round(Cy/2),:);
+            Ccorr_HSV = Ccorr_HSV./Ccenter_HSV;
+            [Int_bg,Int_bg_HSV] = pickBgnd();
+
+            outputfile={'Img #', '# of ML','max area [um^2]'};
+            
+            searchflag = true;
     end
     
-    Ccorr = double(rgb2gray(imread(corrfile)));
-    [Cx,Cy] = size(Ccorr);
-    Ccenter = Ccorr(round(Cx/2),round(Cy/2),:);
-    Ccorr = Ccorr/Ccenter;
-    Ccorr_HSV = double(rgb2hsv(imread(corrfile)));
-    Ccenter_HSV = Ccorr_HSV./Ccorr_HSV(round(Cx/2),round(Cy/2),:);
-    Ccorr_HSV = Ccorr_HSV./Ccenter_HSV;
-    [Int_bg,Int_bg_HSV] = pickBgnd();
-    
-    outputfile={'Img #', '# of ML','max area [um^2]'};
-
     timetot = (nx+1)*(ny+1)*(2.2 + 1/2.7);  %estimated total map time
     mintot = floor(timetot/60);
     sectot = floor(mod(timetot,60));
@@ -861,37 +864,65 @@ function eMapStart(sou,eve)
     
     ii=1;
     index=1;
-    for ix = (-nx/2):(nx/2)
-        pt(1) = + ix*(uscope_sizex-overlap)*uscope_mm4pix;
-        for iy = (-ny/2):(ny/2)
-            pt(2) = + iy*(uscope_sizey-overlap)*uscope_mm4pix;
-            motorGoToXY([mapc 0]+pt,true);
-            pause(1);
-            eScopeRefresh([],[]);
-            overviewStore();
-            eSaveImg([],[],ii,nx+1);
-            
-            image = flipud(uint8(imgMain));
-            [flakenum, areamax] = flakeFind(image,Ccorr,Ccorr_HSV,Int_bg,Int_bg_HSV,ii);
-            if ~isempty(flakenum)
-                outputfile{index+1,1}=ii;
-                outputfile{index+1,2}=flakenum;
-                outputfile{index+1,3}=areamax;
-                index = index+1;
+    
+    if searchflag
+        for ix = (-nx/2):(nx/2)
+            pt(1) = + ix*(uscope_sizex-overlap)*uscope_mm4pix;
+            for iy = (-ny/2):(ny/2)
+                pt(2) = + iy*(uscope_sizey-overlap)*uscope_mm4pix;
+                motorGoToXY([mapc 0]+pt,true);
+                pause(1);
+                eScopeRefresh([],[]);
+                overviewStore();
+                eSaveImg([],[],ii,nx+1);
+
+                image = flipud(uint8(imgMain));
+                [flakenum, areamax] = flakeFind(image,Ccorr,Ccorr_HSV,Int_bg,Int_bg_HSV,ii);
+                if ~isempty(flakenum)
+                    outputfile{index+1,1}=ii;
+                    outputfile{index+1,2}=flakenum;
+                    outputfile{index+1,3}=areamax;
+                    index = index+1;
+                end
+
+                timerem = timetot*(1 - ii/((nx+1)*(ny+1)));    %estimated remaining time
+                minrem = floor(timerem/60);
+                secrem = floor(mod(timerem,60));
+                waitbar(ii/((nx+1)*(ny+1)),f,strcat('Estimated remaining time:  ',num2str(minrem),'min',num2str(secrem),'sec'));
+
+                ii=ii+1;
+                if or(flag_stopmapping, getappdata(f,'Cancel'))
+                    break;
+                end
             end
-            
-            timerem = timetot*(1 - ii/((nx+1)*(ny+1)));    %estimated remaining time
-            minrem = floor(timerem/60);
-            secrem = floor(mod(timerem,60));
-            waitbar(ii/((nx+1)*(ny+1)),f,strcat('Estimated remaining time:  ',num2str(minrem),'min',num2str(secrem),'sec'));
-            
-            ii=ii+1;
             if or(flag_stopmapping, getappdata(f,'Cancel'))
                 break;
             end
         end
-        if or(flag_stopmapping, getappdata(f,'Cancel'))
-            break;
+    else
+        for ix = (-nx/2):(nx/2)
+            pt(1) = + ix*(uscope_sizex-overlap)*uscope_mm4pix;
+            for iy = (-ny/2):(ny/2)
+                pt(2) = + iy*(uscope_sizey-overlap)*uscope_mm4pix;
+                motorGoToXY([mapc 0]+pt,true);
+                pause(1);
+                eScopeRefresh([],[]);
+                overviewStore();
+                eSaveImg([],[],ii,nx+1);
+                
+                timerem = timetot*(1 - ii/((nx+1)*(ny+1)));    %estimated remaining time
+                minrem = floor(timerem/60);
+                secrem = floor(mod(timerem,60));
+                waitbar(ii/((nx+1)*(ny+1)),f,strcat('Estimated remaining time:  ',num2str(minrem),'min',num2str(secrem),'sec'));
+
+                ii=ii+1;
+                if or(flag_stopmapping, getappdata(f,'Cancel'))
+                    break;
+                end
+            end
+            if or(flag_stopmapping, getappdata(f,'Cancel'))
+                break;
+            end
         end
     end
     
@@ -903,8 +934,10 @@ function eMapStart(sou,eve)
     switch saveflag
         case 'Yes'
             eMapSave([],[]);
-            operation=['xlswrite(','''Results', '.xls''',',' ' outputfile' ')'];
-            eval(operation);
+            if searchflag
+                operation=['xlswrite(','''Results', '.xls''',',' ' outputfile' ')'];
+                eval(operation);
+            end
     end
 end
 function eMapSave(sou,eve)
