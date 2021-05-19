@@ -810,10 +810,17 @@ function eMapStart(sou,eve)
     
     searchflag = false;
     answer = questdlg('Do you want to perform the automatic search for graphene?',...
-        'GraphIdentify','Yes','No','Yes');
+        'GraphIdentify');
     switch answer
         case 'Yes'
-            searchflag = true;
+            warn = questdlg('The current view should be focused on a clean, broad section of background. Do you want to proceed?',...
+                'Warning');
+            switch warn
+                case 'Yes'
+                    searchflag = true;
+                otherwise
+                    return
+            end
     end
     
     flag_stopmapping = false;
