@@ -811,6 +811,10 @@ function eMapStart(sou,eve)
     searchflag = false;
     answer = questdlg('Do you want to perform the automatic search for graphene?',...
         'GraphIdentify','Yes','No','Yes');
+    switch answer
+        case 'Yes'
+            searchflag = true;
+    end
     
     flag_stopmapping = false;
     initXYZ = XYZ;
@@ -832,26 +836,23 @@ function eMapStart(sou,eve)
     overviewXY = floor( (mapc + pt(1:2))./uscope_mm4pix - [uscope_sizex uscope_sizey]/2);
     
     
-    switch answer
-        case 'Yes'
-            questdlg('Select image for lighting correction','Lighting correction','Ok','Ok');
-            [corrfile, corrcancel] = imgetfile();
-            if corrcancel
-                return
-            end
-            
-            Ccorr = double(rgb2gray(imread(corrfile)));
-            [Cx,Cy] = size(Ccorr);
-            Ccenter = Ccorr(round(Cx/2),round(Cy/2),:);
-            Ccorr = Ccorr/Ccenter;
-            Ccorr_HSV = double(rgb2hsv(imread(corrfile)));
-            Ccenter_HSV = Ccorr_HSV./Ccorr_HSV(round(Cx/2),round(Cy/2),:);
-            Ccorr_HSV = Ccorr_HSV./Ccenter_HSV;
-            [Int_bg,Int_bg_HSV] = pickBgnd();
+    if searchflag
+        questdlg('Select image for lighting correction','Lighting correction','Ok','Ok');
+        [corrfile, corrcancel] = imgetfile();
+        if corrcancel
+            return
+        end
 
-            outputfile={'Img #', '# of ML','max area [um^2]'};
-            
-            searchflag = true;
+        Ccorr = double(rgb2gray(imread(corrfile)));
+        [Cx,Cy] = size(Ccorr);
+        Ccenter = Ccorr(round(Cx/2),round(Cy/2),:);
+        Ccorr = Ccorr/Ccenter;
+        Ccorr_HSV = double(rgb2hsv(imread(corrfile)));
+        Ccenter_HSV = Ccorr_HSV./Ccorr_HSV(round(Cx/2),round(Cy/2),:);
+        Ccorr_HSV = Ccorr_HSV./Ccenter_HSV;
+        [Int_bg,Int_bg_HSV] = pickBgnd();
+
+        outputfile={'Img #', '# of ML','max area [um^2]'};
     end
     
     timetot = (nx+1)*(ny+1)*(2.2 + 1/2.7);  %estimated total map time
