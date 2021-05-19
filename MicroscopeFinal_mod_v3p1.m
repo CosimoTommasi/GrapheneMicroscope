@@ -1242,7 +1242,7 @@ function [Int,Int_HSV]=pickBgnd()
         Int_HSV(cc) = locs(i);
     end
 end
-function [flakenum, MAXarea] = flakeFind(flakeimg,Ccorr,Ccorr_HSV,Int_bg,Int_bg_HSV,num)
+function [flakenum, MAXarea] = flakeFind(flakeimg,Ccorr,Ccorr_HSV,num)
     global uscope_mm4pix;
     % Parameters definition
     MLminR = 0.920;
