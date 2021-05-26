@@ -275,11 +275,10 @@ function eScopeRefresh(sou,eve)
     % ---------------------------------------------------------------------
     % 1. Integration and XYZ update (double serve?)
     XYZ = motorReadXYZ();
-    if tau==1
-        imgMain = double(fliplr(snapshot(cam)))./imgBackgnd;
-    else
-        imgMain = (1-tau)*imgMain+tau*double(fliplr(snapshot(cam)))./imgBackgnd;
-    end
+    
+    tmp = double(fliplr(snapshot(cam)));
+    imgMain = (1-tau)*imgMain+tau*(tmp + (1-imgBackgnd).*tmp);
+    
     % ---------------------------------------------------------------------
     % 2. Just keep the correct color
     switch ncolor
@@ -680,7 +679,7 @@ end
 function eBgndLoad(sou,eve)
     global uscope_sizex uscope_sizey;
     fn = imgetfile;
-    if length(fn)>0
+    if ~isempty(fn)
         tmp = imread(fn);
         if all(size(tmp)==[uscope_sizey uscope_sizex 3])
             bgndStore(double(tmp));
@@ -1136,10 +1135,9 @@ end
 function bgndStore(img)
     global imgBackgnd bgndfile;
     imgBackgnd = img;
-    dn = 10;
-    imgBackgnd(:,:,1)=imgBackgnd(:,:,1)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,1)));
-    imgBackgnd(:,:,2)=imgBackgnd(:,:,2)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,2)));
-    imgBackgnd(:,:,3)=imgBackgnd(:,:,3)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,3)));
+    bgndSize = size(imgBackgnd);
+    bgndCenter = imgBackgnd(round(bgndSize(1)/2),round(bgndSize(2)/2),:);
+    imgBackgnd=imgBackgnd/bgndCenter;
     save(bgndfile,'imgBackgnd');
 end
 function overviewStore()
