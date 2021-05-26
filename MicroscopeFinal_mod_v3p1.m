@@ -7,7 +7,7 @@ clear timScope;
 
 % Parameters
 global cam;
-global imgBackgnd;
+global imgBackgnd corr;
 global uscope_mm4pix uscope_sizex uscope_sizey;
 global overview_pix4mm overview_sizex overview_sizey;
 global cropsize;
@@ -50,6 +50,9 @@ if flag_background
     load('imgBackgnd.mat');
 end
 imgBackgnd = double(imgBackgnd);
+bgndSize = size(imgBackgnd);
+bgndCenter = imgBackgnd(round(bgndSize(1)/2),round(bgndSize(2)/2),:);
+corr=imgBackgnd./bgndCenter;
 
 dnx = uscope_sizex/2.4;
 dny = uscope_sizey/2.4;
@@ -269,15 +272,15 @@ function eScopeStart(sou,eve)
     zcursorUpdate(0,XYZ(3));
 end
 function eScopeRefresh(sou,eve)
-    global cam imgMain imgBackgnd;
+    global cam imgMain corr;
     global hzCurs hImage hhist hhist2 h1WinSq h1WinBL h1WinTR; 
     global tau XYZ ncolor valmax;
     % ---------------------------------------------------------------------
     % 1. Integration and XYZ update (double serve?)
     XYZ = motorReadXYZ();
-    
+        
     tmp = double(fliplr(snapshot(cam)));
-    imgMain = (1-tau)*imgMain+tau*(tmp + (1-imgBackgnd).*tmp);
+    imgMain = (1-tau)*imgMain+tau*(tmp + (1-corr).*tmp);
     
     % ---------------------------------------------------------------------
     % 2. Just keep the correct color
@@ -1133,11 +1136,11 @@ function setColorScheme(nc)
     cm.Children(nmen-ncolor).Checked = 'on';
 end
 function bgndStore(img)
-    global imgBackgnd bgndfile;
-    imgBackgnd = img;
+    global imgBackgnd bgndfile corr;
+    imgBackgnd = double(img);
     bgndSize = size(imgBackgnd);
     bgndCenter = imgBackgnd(round(bgndSize(1)/2),round(bgndSize(2)/2),:);
-    imgBackgnd=imgBackgnd/bgndCenter;
+    corr=imgBackgnd./bgndCenter;
     save(bgndfile,'imgBackgnd');
 end
 function overviewStore()
