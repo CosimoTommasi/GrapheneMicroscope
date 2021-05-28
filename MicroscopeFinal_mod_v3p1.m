@@ -1244,36 +1244,6 @@ function zcursorUpdate(pos,value)
         hzCurs.BackgroundColor = overlayColor;
     end
 end
-function askHomeReset()
-    global hx hy hz
-    answer = questdlg('Reset to Home and go to middle position?', 'Home Reset', 'Yes', 'No', 'No');
-    switch answer
-        case 'Yes'
-            hx.MoveHome(0,false);
-            hy.MoveHome(0,false);
-            hz.MoveHome(0,false);
-
-            flag = true;        
-            while flag
-                pause(0.1);
-                f1 = dec2bin(hx.GetStatusBits_Bits(0))-'0';
-                f1 = f1(27) + f1(28);
-                f2 = dec2bin(hx.GetStatusBits_Bits(0))-'0';
-                f2 = f2(27) + f2(28);
-                f3 = dec2bin(hx.GetStatusBits_Bits(0))-'0';
-                f3 = f3(27) + f3(28);
-                if (f1+f2+f3)==0
-                    flag = false;
-                end
-            end
-            hx.SetAbsMovePos(0,12.5);
-            hx.MoveAbsolute(0,false);
-            hy.SetAbsMovePos(0,12.5);
-            hy.MoveAbsolute(0,false);
-            hz.SetAbsMovePos(0,17.03);
-            hz.MoveAbsolute(0,true);
-    end
-end
 function [Int,Int_HSV]=pickBgnd()
     global imgMain;
     
