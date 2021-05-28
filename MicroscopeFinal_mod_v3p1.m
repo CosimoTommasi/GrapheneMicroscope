@@ -7,7 +7,7 @@ clear timScope;
 
 % Parameters
 global cam;
-global imgBackgnd corr;
+global imgBackgnd;
 global uscope_mm4pix uscope_sizex uscope_sizey;
 global overview_pix4mm overview_sizex overview_sizey;
 global cropsize;
@@ -50,9 +50,6 @@ if flag_background
     load('imgBackgnd.mat');
 end
 imgBackgnd = double(imgBackgnd);
-bgndSize = size(imgBackgnd);
-bgndCenter = imgBackgnd(round(bgndSize(1)/2),round(bgndSize(2)/2),:);
-corr=imgBackgnd./bgndCenter;
 
 dnx = uscope_sizex/2.4;
 dny = uscope_sizey/2.4;
@@ -272,16 +269,17 @@ function eScopeStart(sou,eve)
     zcursorUpdate(0,XYZ(3));
 end
 function eScopeRefresh(sou,eve)
-    global cam imgMain corr;
+    global cam imgMain imgBackgnd;
     global hzCurs hImage hhist hhist2 h1WinSq h1WinBL h1WinTR; 
     global tau XYZ ncolor valmax;
     % ---------------------------------------------------------------------
     % 1. Integration and XYZ update (double serve?)
     XYZ = motorReadXYZ();
-        
-    tmp = double(fliplr(snapshot(cam)));
-    imgMain = (1-tau)*imgMain+tau*(tmp + (1-corr).*tmp);
-    
+    if tau==1
+        imgMain = double(fliplr(snapshot(cam)))./imgBackgnd;
+    else
+        imgMain = (1-tau)*imgMain+tau*double(fliplr(snapshot(cam)))./imgBackgnd;
+    end
     % ---------------------------------------------------------------------
     % 2. Just keep the correct color
     switch ncolor
@@ -682,7 +680,7 @@ end
 function eBgndLoad(sou,eve)
     global uscope_sizex uscope_sizey;
     fn = imgetfile;
-    if ~isempty(fn)
+    if length(fn)>0
         tmp = imread(fn);
         if all(size(tmp)==[uscope_sizey uscope_sizex 3])
             bgndStore(double(tmp));
@@ -1136,11 +1134,12 @@ function setColorScheme(nc)
     cm.Children(nmen-ncolor).Checked = 'on';
 end
 function bgndStore(img)
-    global imgBackgnd bgndfile corr;
-    imgBackgnd = double(img);
-    bgndSize = size(imgBackgnd);
-    bgndCenter = imgBackgnd(round(bgndSize(1)/2),round(bgndSize(2)/2),:);
-    corr=imgBackgnd./bgndCenter;
+    global imgBackgnd bgndfile;
+    imgBackgnd = img;
+    dn = 10;
+    imgBackgnd(:,:,1)=imgBackgnd(:,:,1)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,1)));
+    imgBackgnd(:,:,2)=imgBackgnd(:,:,2)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,2)));
+    imgBackgnd(:,:,3)=imgBackgnd(:,:,3)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,3)));
     save(bgndfile,'imgBackgnd');
 end
 function overviewStore()
