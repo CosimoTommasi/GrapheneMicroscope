@@ -862,7 +862,14 @@ function eMapStart(sou,eve)
         outputfile={'Img #', '# of ML','max area [um^2]'};
     end
     
-    timetot = (nx+1)*(ny+1)*(2.2 + 1/2.7);  %estimated total map time
+    if uscope_mm4pix > 4e-4
+        timeup = 3;
+        timedown = 0.8;
+    else
+        timeup = 2.2;
+        timedown = 1/2.7;
+    end
+    timetot = (nx+1)*(ny+1)*(timeup + timedown);  %estimated total map time
     mintot = floor(timetot/60);
     sectot = floor(mod(timetot,60));
     
