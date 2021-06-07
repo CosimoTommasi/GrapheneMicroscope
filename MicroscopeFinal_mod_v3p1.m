@@ -821,6 +821,8 @@ function eMapStart(sou,eve)
                 otherwise
                     return
             end
+        case 'Cancel'
+            return
     end
     
     flag_stopmapping = false;
