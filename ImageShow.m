@@ -54,6 +54,7 @@ function eKeyPress(sou,eve)
                 return
             else
                 i = i-1;
+                c = 1;
                 img{1} = imread(fn{i});
                 img{2} = img{1}(:,:,1);
                 img{3} = img{1}(:,:,2);
@@ -66,6 +67,7 @@ function eKeyPress(sou,eve)
                 return
             else
                 i = i+1;
+                c = 1;
                 img{1} = imread(fn{i});
                 img{2} = img{1}(:,:,1);
                 img{3} = img{1}(:,:,2);
