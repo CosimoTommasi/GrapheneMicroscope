@@ -11,12 +11,14 @@ clear all;
 close all;
 
 
-global img  f fn i c color shown;
+global img fn i c color shown num_image;
 
 fnv = dir('img-*.bmp');
-num_image = length(fnv);
-for ii=1:num_image
-   fn{ii} = fnv(ii).name; 
+N = length(fnv);
+for ii=1:N
+   fn{ii} = fnv(ii).name;
+   j = strfind(fn{ii},'_cols');
+   num_image{ii} = fn{ii}(5:j-1);
 end
 
 i=1;
@@ -28,27 +30,22 @@ color = {'', ' RED', ' GREEN'};
 
 f = figure(1);
 shown = imshow(img{c});
-title('1');
 f.NextPlot = 'replacechildren';
 f.WindowState = 'maximized';
 f.WindowKeyPressFcn = @eKeyPress;
+title('1');
 
 function eKeyPress(sou,eve)
-    global img f fn i c color shown;
+    global img fn i c color shown num_image;
     switch eve.Key
         case 'uparrow'
-            c = mod(c,3)+1;
+            c = mod(c,3)+1; %cicla su 1, 2 e 3
             shown.CData = img{c};
-            title(strcat(num2str(i),color{c}));
-            drawnonw
+            title(strcat(num_image(i),color{c}));
         case 'downarrow'
-            c = c-1;
-            if c == 0
-                c=3;
-            end
+            c = c-1+3*floor(1/c);    %cicla su 1, 2 e 3
             shown.CData = img{c};
-            title(strcat(num2str(i),color{c}));
-            drawnonw
+            title(strcat(num_image(i),color{c}));
         case 'leftarrow'
             if i == 1
                 return
@@ -59,8 +56,7 @@ function eKeyPress(sou,eve)
                 img{2} = img{1}(:,:,1);
                 img{3} = img{1}(:,:,2);
                 shown.CData = img{c};
-                title(strcat(num2str(i),color{c}));
-                drawnonw
+                title(strcat(num_image(i),color{c}));
             end
         case 'rightarrow'
             if i == length(fn)
@@ -72,8 +68,7 @@ function eKeyPress(sou,eve)
                 img{2} = img{1}(:,:,1);
                 img{3} = img{1}(:,:,2);
                 shown.CData = img{c};
-                title(strcat(num2str(i),color{c}));
-                drawnonw
+                title(strcat(num_image(i),color{c}));
             end
     end
 end
