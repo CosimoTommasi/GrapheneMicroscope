@@ -1,10 +1,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Script per scorrere immagini RGB e nei singoli canali R e G
+% Script to visualize RGB images and switch between RGB, R and G channels
 
-% I comandi per la navigazione sono i seguenti:
-%     →/←: scorrimento immagini
-%     ↑/↓: ciclo colori (RGB, solo R, solo G)
+% Navigation commands:
+%   →/←: change picture
+%   ↑/↓: change color (RGB, R only, G only)
+%   Esc: close image and exit
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear all;
@@ -21,11 +22,12 @@ for ii=1:N
    num_image{ii} = fn{ii}(5:j-1);
 end
 
-i=1;
-c=1;
+i=1;    %image index
+c=1;    %color index
+
 img{1} = imread(fn{i});
-img{2} = img{1}(:,:,1);
-img{3} = img{1}(:,:,2);
+img{2} = repmat(img{1}(:,:,1), [1,1,3]);    % repmat is needed to display as grayscale
+img{3} = repmat(img{1}(:,:,2), [1,1,3]);
 color = {'', ' RED', ' GREEN'};
 
 f = figure(1);
@@ -39,11 +41,11 @@ function eKeyPress(sou,eve)
     global img fn i c color shown num_image;
     switch eve.Key
         case 'uparrow'
-            c = mod(c,3)+1; %cicla su 1, 2 e 3
+            c = mod(c,3)+1;     %cycles on 1, 2, 3
             shown.CData = img{c};
             title(strcat(num_image(i),color{c}));
         case 'downarrow'
-            c = c-1+3*floor(1/c);    %cicla su 1, 2 e 3
+            c = c-1+3*floor(1/c);    %cycles on 1, 2, 3
             shown.CData = img{c};
             title(strcat(num_image(i),color{c}));
         case 'leftarrow'
@@ -53,8 +55,8 @@ function eKeyPress(sou,eve)
                 i = i-1;
                 c = 1;
                 img{1} = imread(fn{i});
-                img{2} = img{1}(:,:,1);
-                img{3} = img{1}(:,:,2);
+                img{2} = repmat(img{1}(:,:,1), [1,1,3]);
+                img{3} = repmat(img{1}(:,:,2), [1,1,3]);
                 shown.CData = img{c};
                 title(strcat(num_image(i),color{c}));
             end
@@ -65,11 +67,13 @@ function eKeyPress(sou,eve)
                 i = i+1;
                 c = 1;
                 img{1} = imread(fn{i});
-                img{2} = img{1}(:,:,1);
-                img{3} = img{1}(:,:,2);
+                img{2} = repmat(img{1}(:,:,1), [1,1,3]);
+                img{3} = repmat(img{1}(:,:,2), [1,1,3]);
                 shown.CData = img{c};
                 title(strcat(num_image(i),color{c}));
             end
+        case 'escape'
+            close
     end
 end
     
