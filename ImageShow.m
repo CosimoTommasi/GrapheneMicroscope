@@ -16,11 +16,22 @@ global img fn i c color shown num_image;
 
 fnv = dir('img-*.bmp');
 N = length(fnv);
+nums = zeros([1,N]);
 for ii=1:N
    fn{ii} = fnv(ii).name;
    j = strfind(fn{ii},'_cols');
    num_image{ii} = fn{ii}(5:j-1);
+   nums(ii) = str2num(num_image{ii});
 end
+
+% Sort names and numbers in increasing order
+[nums, I] = sort(nums);
+for ii=1:N
+   tmp1{ii} = fn{I(ii)};
+   tmp2{ii} = num_image{I(ii)};    
+end
+fn = tmp1;
+num_image = tmp2;
 
 i=1;    %image index
 c=1;    %color index
@@ -35,7 +46,7 @@ shown = imshow(img{c});
 f.NextPlot = 'replacechildren';
 f.WindowState = 'maximized';
 f.WindowKeyPressFcn = @eKeyPress;
-title('1');
+title(strcat(num_image(i),color{c}));
 
 function eKeyPress(sou,eve)
     global img fn i c color shown num_image;
