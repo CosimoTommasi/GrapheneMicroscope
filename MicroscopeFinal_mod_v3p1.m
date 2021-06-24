@@ -75,9 +75,6 @@ dny = uscope_sizey/2.4;
 winInit();
 focusCoeffCalc();
 
-%motorMembraneZ(0*fact(1));
-%motorReadMembraneZ()
-
 timScope = timer;
 timScope.StartDelay = 0.1;
 timScope.StartFcn = @eScopeStart;
@@ -93,13 +90,12 @@ return;
 % -------------------------------------------------------------------------
 %  Init functions
 function winInit()
-    global hf1 ha1main ha1z ha2z hImage hInfo hCross hzCurs hz2Curs h1WinSq h1WinBL h1WinTR h1WinInfo;
+    global hf1 ha1main ha1z hImage hInfo hCross hzCurs h1WinSq h1WinBL h1WinTR h1WinInfo;
     global hf2 ha2main hhist hhist2;
     global hf3 ha3main hOverview hActPos hfpts h3WinSq h3WinBL h3WinTR h3WinInfo;
     global uscope_sizex uscope_sizey overlayColor textColor;
     global overview_sizex overview_sizey;
     global focuspts flag_background XYZ hx hy hz;
-    global flag_tracking flag_membraneMotor;
     XYZ(1) = hx.GetPosition_Position(0);
     XYZ(2) = hy.GetPosition_Position(0);
     XYZ(3) = hz.GetPosition_Position(0);
@@ -162,26 +158,6 @@ function winInit()
     ha1z.YTick = [];
     ha1z.XLim = [-1 1];
     ha1z.YLim = [-1 1];
-    % Additional z sidebar for membrane motor -----------------------------
-%     if flag_membraneMotor
-%         ha2z = axes; hold on;
-%         ha2z.XColor = overlayColor;
-%         ha2z.YColor = overlayColor;
-%         hz2Curs = text(0,0,'','HorizontalAlignment','center');
-%         zcursorUpdate(0,0);
-%         hz2Curs.Color = textColor;
-%         hz2Curs.ButtonDownFcn = @eClick;
-%         hz2Curs.EdgeColor = overlayColor;
-%         hz2Curs.BackgroundColor = overlayColor;
-%         hz2Curs.FontName = 'Courier';
-%         ha2z.Color = 'none';
-%         ha2z.Box = 'on';
-%         ha2z.XTick = [];
-%         ha2z.YTick = [];
-%         ha2z.XLim = [-1 1];
-%         ha2z.YLim = [-1 1];
-%     end
-    % ---------------------------------------------------------------------    
     
     figureSizeReset(hf1);
 % -------------------------------------------------------------------------
@@ -197,14 +173,14 @@ function winInit()
     m6 = uimenu(cm1,'Text','[I] Integrate','MenuSelected',@eIntegrateToggle);
     m6.Separator = 'on';
     m7 = uimenu(cm1, 'Text','[S] go to sample focus','MenuSelected', @eGoToSample);
-%     m8 = uimenu(cm1, 'Text','[CTRL+F] set membrane focus','MenuSelected', @eSetMF);
-%     m9 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', @eGoToMembrane);
-%     m10 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', @eSwitchTracking);
-%     m10.Separator = 'on';
+    m8 = uimenu(cm1, 'Text','[CTRL+F] set membrane focus','MenuSelected', @eSetMF);
+    m9 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', @eGoToMembrane);
+    m10 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', @eSwitchTracking);
+    m10.Separator = 'on';
     mA = uimenu(cm1,'Text','    Background','MenuSelected',@eBgndToggle);
     mB = uimenu(cm1,'Text','[-] Use current image as Background','MenuSelected',@eBgndStore);
     mC = uimenu(cm1,'Text','    Load image file as Background','MenuSelected',@eBgndLoad);
-    mD = uimenu(cm1,'Text','[S] Save current image','MenuSelected',@eSaveImgName);
+    mD = uimenu(cm1,'Text','[MAIUSC+S] Save current image','MenuSelected',@eSaveImgName);
     mE = uimenu(cm1,'Text','[DEL] Stop motors and maps','MenuSelected',@eStopMotors);
     mE.Separator = 'on';
     mF = uimenu(cm1,'Text','[ESC] Stop microscope','MenuSelected',@eExit);
@@ -213,12 +189,10 @@ function winInit()
         mA.Checked = 'on';
         mB.Enable = 'off';
     end
-%     if flag_tracking
-%         m10.Checked = 'on';
-%     end
-%     if isequal(m8.Checked,'off')
-%         m9.Enable = 'off';
-%     end
+    if isequal(m8.Checked,'off')
+        m9.Enable = 'off';
+        m10.Enable = 'off';
+    end
     if size(focuspts)<3
         m7.Enable = 'off';
     end
@@ -384,13 +358,17 @@ function eKeyPress(sou,eve)
     global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
     global h3WinBL h3WinTR;
     % -------------------------------------------------------------------------
-    if isequal(eve.Modifier,'control')
-%         switch eve.Key
-%             case 'f';   %INSERT FUNCTION (set membrane focus)
-%             case 's';   %INSERT FUNCTION (go to membrane focus)
-%         end
+    if isequal(eve.Modifier{:},'control')
+        switch eve.Key
+            case 'f'; eSetMF([],[]);
+            case 's'; eGoToMembrane([],[]);
+        end
         disp('');
     % -------------------------------------------------------------------------
+    elseif isequal(eve.Modifier{:},'shift')
+        switch eve.Key
+            case 's'; eSaveImgName([],[]);
+        end
     else
         switch eve.Key
             case '1'; figure(1);
@@ -424,7 +402,7 @@ function eKeyPress(sou,eve)
             case 'u'; eFPreset([],[]);
     % -------------------------------------------------------------------------
             case 's';   eGoToSample([],[]);
-%             case 't';   %INSERT FUNCTION (switch tracking ON/OFF)
+            case 't';   eSwitchTracking([],[]);
     % -------------------------------------------------------------------------
             case 'c'; setColorScheme(0);
             case 'r'; setColorScheme(1);
@@ -434,7 +412,6 @@ function eKeyPress(sou,eve)
             case 'i'; eIntegrateToggle([],[]);
             case {'subtract' 'hyphen'}; eBgndStore([],[]);
             case 'w'; boxToggle(sou)
-            case 's'; eSaveImgName([],[]);
     % -------------------------------------------------------------------------
             case 'delete'; eStopMotors([],[]);
             case 'escape'; eExit([],[]);
@@ -1114,19 +1091,42 @@ function eGoToSample(sou,eve)
     global XYZ;
     motorFocalPlane(XYZ);
 end
-% function eSetMF(sou,eve)
-%     global membraneFocus hImage;
-%     membraneFocus = motorReadMembraneZ();
-%     hImage.ContextMenu.m8.Checked = 'on';
-% end
-% function eGoToMembrane(sou,eve)
-%     global membraneFocus;
-%     motorMembraneZ(membraneFocus);
-% end
-% function eSwitchTracking(sou,eve)
-%     global flag_tracking;
-%     flag_tracking = true;
-% end
+function eSetMF(sou,eve)
+    global membraneFocus membraneZ hImage;
+    membraneZ = motorReadMembraneZ();
+    pos = motorReadXYZ();
+    membraneFocus = pos(3);
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
+            cm.Children(ii).Checked = 'on';
+        elseif strcmp(cm.Children(ii).Text,'[CTRL+S] go to membrane focus')
+            cm.Children(ii).Enable = 'on';
+        elseif strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
+            cm.Children(ii).Enable = 'on';
+        end
+    end
+end
+function eGoToMembrane(sou,eve) % TO DO
+    global membraneFocus hz;
+    hz.SetAbsMovePos(0,membraneFocus);
+    hz.MoveAbsolute(true);
+end
+function eSwitchTracking(sou,eve)
+    global flag_tracking hImage;
+    flag_tracking = ~flag_tracking;
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
+            if isequal(cm.Children(ii).Checked,'off')
+                cm.Children(ii).Checked = 'on';
+            else
+                cm.Children(ii).Checked = 'off';
+            end
+            break
+        end
+    end
+end
 % -------------------------------------------------------------------------
 %  Motor utilities
 function motorGoToXY(target,flag)
@@ -1157,7 +1157,7 @@ function motorFocalPlane(target)
 end
 function motorMembraneZ(zpos)
     global ss addr fact;
-    command = [1 num2str(addr(1)*fact(1)) 'MA' num2str(round(zpos),'%d') 13];
+    command = [1 num2str(addr(1)) 'MA' num2str(round(zpos*fact(1)),'%d') 13];
     fprintf(ss,command);
 end
 function pos = motorReadXYZ()
@@ -1271,7 +1271,13 @@ function overviewMarkerUpdate(pos)
     hActPos.YData = ( 0+pos(2)+yv+uscope_sizey/2*uscope_mm4pix)*overview_pix4mm;
 end
 function focusCoeffCalc()
-    global hfpts focuspts focuscoeff hf1;
+    global hfpts focuspts focuscoeff hf1 hImage;
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'[S] go to sample focus')
+            break
+        end
+    end
     if size(focuspts,1)==3
         Zv = focuspts(:,3);
         XY1m = focuspts;
@@ -1280,15 +1286,18 @@ function focusCoeffCalc()
             focuscoeff = inv(XY1m)*Zv;    
             hfpts.MarkerFaceColor = [0 1 0];
             hf1.Name = 'uScope - Camera feed [Focal plane is active]';
+            cm.Children(ii).Enable = 'on';
         else
             focuscoeff = [];
             hfpts.MarkerFaceColor = [1 1 1];
             hf1.Name = 'uScope - Camera feed [Invalid focal plane]';
+            cm.Children(ii).Enable = 'off';
         end
     else
         focuscoeff = []; 
         hfpts.MarkerFaceColor = [1 1 1];
         hf1.Name = sprintf('uScope - Camera feed [%d focal points]',size(focuspts,1));
+        cm.Children(ii).Enable = 'off';
     end
 end
 function figureSizeReset(sou)
