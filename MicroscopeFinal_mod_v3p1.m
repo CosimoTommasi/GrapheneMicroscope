@@ -16,6 +16,7 @@ global flag_background bgndfile;
 global overlayColor textColor dnx dny;
 global tau valmax;
 global timScope;
+global flag_tracking;
 
 tau              = 1; 
 % uscope_mm4pix    = 1.85e-4; % Zoom 7 (fondoscala)
@@ -32,11 +33,12 @@ textColor        = [0 0 0];
 cropsize         = 3;
 valmax           = 200;
 ncolor           = 0;
+flag_tracking = false;
 
 % -------------------------------------------------------------------------
 %  Create camera and motor objects, if not initialized yet
 %
-if length(cam)==0
+if isempty(cam)
     cam = webcam(1);
 end
 if ~exist('hfmotor')
@@ -76,7 +78,8 @@ function winInit()
     global hf3 ha3main hOverview hActPos hfpts h3WinSq h3WinBL h3WinTR h3WinInfo;
     global uscope_sizex uscope_sizey overlayColor textColor;
     global overview_sizex overview_sizey;
-    global focuspts flag_background XYZ hx hy hz;    
+    global focuspts flag_background XYZ hx hy hz;
+    global flag_tracking;
     XYZ(1) = hx.GetPosition_Position(0);
     XYZ(2) = hy.GetPosition_Position(0);
     XYZ(3) = hz.GetPosition_Position(0);
@@ -147,23 +150,38 @@ function winInit()
     m1 = uimenu(cm1,'Text','[R] Red Channel','MenuSelected',@eRGBSelect);
     m2 = uimenu(cm1,'Text','[G] Green Channel','MenuSelected',@eRGBSelect);
     m3 = uimenu(cm1,'Text','[B] Blue Channel','MenuSelected',@eRGBSelect);
-    m4 = uimenu(cm1,'Text','[F] + focus point','MenuSelected',@eFPadd);
+    m4 = uimenu(cm1,'Text','[F] + sample focus point','MenuSelected',@eFPadd);
     m4.Separator = 'on';
-    m5 = uimenu(cm1,'Text','[U] reset focus','MenuSelected',@eFPreset);
+    m5 = uimenu(cm1,'Text','[U] reset all focus','MenuSelected',@eFPreset);
     m6 = uimenu(cm1,'Text','[I] Integrate','MenuSelected',@eIntegrateToggle);
     m6.Separator = 'on';
-    m7 = uimenu(cm1,'Text','    Background','MenuSelected',@eBgndToggle);
-    m8 = uimenu(cm1,'Text','[-] Use current image as Background','MenuSelected',@eBgndStore);
-    m9 = uimenu(cm1,'Text','    Load image file as Background','MenuSelected',@eBgndLoad);
-    mA = uimenu(cm1,'Text','[S] Save current image','MenuSelected',@eSaveImgName);
-    mB = uimenu(cm1,'Text','[DEL] Stop motors and maps','MenuSelected',@eStopMotors);
-    mB.Separator = 'on';
-    mC = uimenu(cm1,'Text','[ESC] Stop microscope','MenuSelected',@eExit);
+    m7 = uimenu(cm1, 'Text','[S] go to sample focus','MenuSelected', @eGoToSample);
+%     m8 = uimenu(cm1, 'Text','[CTRL+F] set membrane focus','MenuSelected', %INSERT FUNCTION @eSetMF
+%     m9 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', %INSERT FUNCTION @eGoToMembrane
+%     m10 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', %INSERT FUNCTION @eSwitchTracking
+    m10.Separator = 'on';
+    mA = uimenu(cm1,'Text','    Background','MenuSelected',@eBgndToggle);
+    mB = uimenu(cm1,'Text','[-] Use current image as Background','MenuSelected',@eBgndStore);
+    mC = uimenu(cm1,'Text','    Load image file as Background','MenuSelected',@eBgndLoad);
+    mD = uimenu(cm1,'Text','[S] Save current image','MenuSelected',@eSaveImgName);
+    mE = uimenu(cm1,'Text','[DEL] Stop motors and maps','MenuSelected',@eStopMotors);
+    mE.Separator = 'on';
+    mF = uimenu(cm1,'Text','[ESC] Stop microscope','MenuSelected',@eExit);
     m0.Checked = 'on';
     if flag_background
-        m7.Checked = 'on';
-        m8.Enable = 'off';
+        mA.Checked = 'on';
+        mB.Enable = 'off';
     end
+%     if flag_tracking
+%         m10.Checked = 'on';
+% %     end
+%     if isequal(m8.Checked,'off')
+%         m9.Enable = 'off';
+%     end
+%     if size(focuspts)<3
+%         m8.Enable = 'off';
+%     end
+        
     hImage.ContextMenu = cm1;
 % -------------------------------------------------------------------------
 % [FIGURE2: contrast anauscope_sizeysis window]
@@ -324,49 +342,62 @@ function eKeyPress(sou,eve)
     global hCross hInfo hzCurs XYZ;
     global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
     global h3WinBL h3WinTR;
-    switch eve.Key
-        case '1'; figure(1);
-        case '2'; figure(2);
-        case '3'; figure(3);
-        case 'space'
-            if min(ha1main.Position==[0 0 1 1])~=0
-                if strcmp(hCross.Visible,'on')
-                    hCross.Visible='off';
-                    hzCurs.Visible='off';
-                    hInfo.Visible='off';
-                    ha1z.Visible='off';
-                else
-                    hCross.Visible='on';
-                    hzCurs.Visible='on';
-                    hInfo.Visible='on';
-                    ha1z.Visible='on';
+    % -------------------------------------------------------------------------
+    if isequal(eve.Modifier,'control')
+%         switch eve.Key
+%             case 'f';   %INSERT FUNCTION (set membrane focus)
+%             case 's';   %INSERT FUNCTION (go to membrane focus)
+%         end
+        disp('');
+    % -------------------------------------------------------------------------
+    else
+        switch eve.Key
+            case '1'; figure(1);
+            case '2'; figure(2);
+            case '3'; figure(3);
+            case 'space'
+                if min(ha1main.Position==[0 0 1 1])~=0
+                    if strcmp(hCross.Visible,'on')
+                        hCross.Visible='off';
+                        hzCurs.Visible='off';
+                        hInfo.Visible='off';
+                        ha1z.Visible='off';
+                    else
+                        hCross.Visible='on';
+                        hzCurs.Visible='on';
+                        hInfo.Visible='on';
+                        ha1z.Visible='on';
+                    end
                 end
-            end
-            figureSizeReset(sou);
-% -------------------------------------------------------------------------
-        case 'leftarrow';  motorGoToXY(XYZ+[1 0 0],false);
-        case 'rightarrow'; motorGoToXY(XYZ-[1 0 0],false);
-        case 'uparrow';    motorGoToXY(XYZ+[0 1 0],false);
-        case 'downarrow';  motorGoToXY(XYZ-[0 1 0],false);
-% -------------------------------------------------------------------------
-        case 'm'; eMapStart([],[]);
-        case 'o'; overviewStore();
-% -------------------------------------------------------------------------
-        case 'f'; eFPadd([],[]);
-        case 'u'; eFPreset([],[]);
-% -------------------------------------------------------------------------
-        case 'c'; setColorScheme(0);
-        case 'r'; setColorScheme(1);
-        case 'g'; setColorScheme(2);
-        case 'b'; setColorScheme(3);
-% -------------------------------------------------------------------------
-        case 'i'; eIntegrateToggle([],[]);
-        case {'subtract' 'hyphen'}; eBgndStore([],[]);
-        case 'w'; boxToggle(sou)
-        case 's'; eSaveImgName([],[]);
-% -------------------------------------------------------------------------
-        case 'delete'; eStopMotors([],[]);
-        case 'escape'; eExit([],[]);
+                figureSizeReset(sou);
+    % -------------------------------------------------------------------------
+            case 'leftarrow';  motorGoToXY(XYZ+[1 0 0],false);
+            case 'rightarrow'; motorGoToXY(XYZ-[1 0 0],false);
+            case 'uparrow';    motorGoToXY(XYZ+[0 1 0],false);
+            case 'downarrow';  motorGoToXY(XYZ-[0 1 0],false);
+    % -------------------------------------------------------------------------
+            case 'm'; eMapStart([],[]);
+            case 'o'; overviewStore();
+    % -------------------------------------------------------------------------
+            case 'f'; eFPadd([],[]);
+            case 'u'; eFPreset([],[]);
+    % -------------------------------------------------------------------------
+            case 's';   eGoToSample([],[]);
+%             case 't';   %INSERT FUNCTION (switch tracking ON/OFF)
+    % -------------------------------------------------------------------------
+            case 'c'; setColorScheme(0);
+            case 'r'; setColorScheme(1);
+            case 'g'; setColorScheme(2);
+            case 'b'; setColorScheme(3);
+    % -------------------------------------------------------------------------
+            case 'i'; eIntegrateToggle([],[]);
+            case {'subtract' 'hyphen'}; eBgndStore([],[]);
+            case 'w'; boxToggle(sou)
+            case 's'; eSaveImgName([],[]);
+    % -------------------------------------------------------------------------
+            case 'delete'; eStopMotors([],[]);
+            case 'escape'; eExit([],[]);
+        end
     end
 end
 function eScroll(sou,eve)
@@ -1038,6 +1069,16 @@ function eBoxInfo(sou,eve)
     msgbox(sprintf('Selected area = %.1f x %.1f = %.1f um2\nDiagonal = %.1f um',...
         dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
 end
+function eGoToSample(sou,eve)   %TO DO
+    global XYZ;
+    motorFocalPlane(XYZ);
+end
+% function eSetMF(sou,eve)    %TO DO
+% end
+% function eGoToMembrane(sou,eve) %TO DO
+% end
+% function eSwitchTracking(sou,eve)   %TO DO
+% end
 % -------------------------------------------------------------------------
 %  Motor utilities
 function motorGoToXY(target,flag)
