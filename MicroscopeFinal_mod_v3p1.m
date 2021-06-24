@@ -16,7 +16,7 @@ global flag_background bgndfile;
 global overlayColor textColor dnx dny;
 global tau valmax;
 global timScope;
-global flag_tracking;
+global flag_tracking flag_membraneMotor;
 
 tau              = 1; 
 % uscope_mm4pix    = 1.85e-4; % Zoom 7 (fondoscala)
@@ -34,6 +34,12 @@ cropsize         = 3;
 valmax           = 200;
 ncolor           = 0;
 flag_tracking = false;
+flag_membraneMotor = true;
+% -------------------------------------------------------------------------
+% Motor config
+global addr ss fact;
+addr = [0 3 1];
+fact = [2 2 1]*150000;
 
 % -------------------------------------------------------------------------
 %  Create camera and motor objects, if not initialized yet
@@ -43,6 +49,17 @@ if isempty(cam)
 end
 if ~exist('hfmotor')
     APT_init;
+end
+if flag_membraneMotor 
+    tmp = instrfind;
+    if length(tmp)>0
+        fclose(instrfind);
+    end
+    ss = serial('COM5');
+    fopen(ss);
+    for ia=1:3
+        fprintf(ss,[1 num2str(addr(ia)) 'MN' 13]);
+    end
 end
 % -------------------------------------------------------------------------
 %  Load background image
@@ -57,6 +74,9 @@ dnx = uscope_sizex/2.4;
 dny = uscope_sizey/2.4;
 winInit();
 focusCoeffCalc();
+
+%motorMembraneZ(0*fact(1));
+%motorReadMembraneZ()
 
 timScope = timer;
 timScope.StartDelay = 0.1;
@@ -1107,12 +1127,24 @@ function motorFocalPlane(target)
     end   
     
 end
+function motorMembraneZ(zpos)
+    global ss addr fact;
+    command = [1 num2str(addr(1)) 'MA' num2str(round(zpos),'%d') 13];
+    fprintf(ss,command);
+end
 function pos = motorReadXYZ()
     global hx hy hz;
     pos(1) = hx.GetPosition_Position(0);
     pos(2) = hy.GetPosition_Position(0);
     pos(3) = hz.GetPosition_Position(0);
     overviewMarkerUpdate(pos(1:2));
+end
+function zpos = motorReadMembraneZ()
+    global ss fact addr;
+    command = [1 num2str(addr(1)) 'TP' 13];
+    fprintf(ss,command);
+    resp = fscanf(ss,'%s');
+    zpos = str2num(resp(4:end))/fact(1);
 end
 function res = motorNotMoving()
     global hx hy hz;
