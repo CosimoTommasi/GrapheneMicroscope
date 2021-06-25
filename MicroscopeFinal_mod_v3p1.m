@@ -1087,43 +1087,57 @@ function eBoxInfo(sou,eve)
     msgbox(sprintf('Selected area = %.1f x %.1f = %.1f um2\nDiagonal = %.1f um',...
         dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
 end
-function eGoToSample(sou,eve)
+function eGoToSample(sou,eve)   %DONE
     global XYZ;
     motorFocalPlane(XYZ);
 end
-function eSetMF(sou,eve)
-    global membraneFocus membraneZ hImage;
+function eSetMF(sou,eve)    %DONE
+    global membraneFocus membraneZ hImage flag_tracking;
     membraneZ = motorReadMembraneZ();
     pos = motorReadXYZ();
     membraneFocus = pos(3);
     cm = hImage.ContextMenu;
     for ii=1:length(cm.Children)
         if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
-            cm.Children(ii).Checked = 'on';
+            iF = ii;
         elseif strcmp(cm.Children(ii).Text,'[CTRL+S] go to membrane focus')
-            cm.Children(ii).Enable = 'on';
+            iS = ii;
         elseif strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
-            cm.Children(ii).Enable = 'on';
+            iT = ii;
         end
     end
+    cm.Children(iF).Checked = 'on';
+    if ~flag_tracking
+        cm.Children(iS).Enable = 'on';
+    end
+    cm.Children(iT).Enable = 'on';
 end
-function eGoToMembrane(sou,eve) % TO DO
+function eGoToMembrane(sou,eve) %DONE
     global membraneFocus hz;
     hz.SetAbsMovePos(0,membraneFocus);
     hz.MoveAbsolute(true);
 end
-function eSwitchTracking(sou,eve)
+function eSwitchTracking(sou,eve)   %DONE, BUT eMove STILL TO BE CHANGED
     global flag_tracking hImage;
     flag_tracking = ~flag_tracking;
     cm = hImage.ContextMenu;
     for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
-            if isequal(cm.Children(ii).Checked,'off')
-                cm.Children(ii).Checked = 'on';
-            else
-                cm.Children(ii).Checked = 'off';
-            end
-            break
+        if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
+            iF = ii;
+        elseif strcmp(cm.Children(ii).Text,'[CTRL+S] go to membrane focus')
+            iS = ii;
+        elseif strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
+            iT = ii;
+        end
+    end
+    
+    if strcmp(cm.Children(iT).Checked,'off')
+        cm.Children(iT).Checked = 'on';
+        cm.Children(iS).Enable = 'off';
+    else
+        cm.Children(iT).Checked = 'off';
+        if strcmp(cm.Children(iF).Checked,'on')
+            cm.Children(iS).Enable = 'on';
         end
     end
 end
