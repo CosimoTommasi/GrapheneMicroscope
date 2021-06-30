@@ -357,19 +357,8 @@ function eKeyPress(sou,eve)
     global hCross hInfo hzCurs XYZ;
     global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
     global h3WinBL h3WinTR;
-    % -------------------------------------------------------------------------
-    if isequal(eve.Modifier{:},'control')
-        switch eve.Key
-            case 'f'; eSetMF([],[]);
-            case 's'; eGoToMembrane([],[]);
-        end
-        disp('');
-    % -------------------------------------------------------------------------
-    elseif isequal(eve.Modifier{:},'shift')
-        switch eve.Key
-            case 's'; eSaveImgName([],[]);
-        end
-    else
+    
+    if isempty(eve.Modifier)
         switch eve.Key
             case '1'; figure(1);
             case '2'; figure(2);
@@ -415,6 +404,18 @@ function eKeyPress(sou,eve)
     % -------------------------------------------------------------------------
             case 'delete'; eStopMotors([],[]);
             case 'escape'; eExit([],[]);
+        end
+    % -------------------------------------------------------------------------
+    elseif strcmp(eve.Modifier{:},'control')
+        switch eve.Key
+            case 'f'; eSetMF([],[]);
+            case 's'; eGoToMembrane([],[]);
+        end
+        disp('');
+    % -------------------------------------------------------------------------
+    elseif strcmp(eve.Modifier{:},'shift')
+        switch eve.Key
+            case 's'; eSaveImgName([],[]);
         end
     end
 end
@@ -464,6 +465,7 @@ function eMove(sou,eve)
     global hf3 h3WinSq h3WinBL h3WinTR;
     global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
     global XYZ;
+    global flag_tracking membraneFocus deltaZ
     clickpt  = sou.UserData.Event.IntersectionPoint;
     clicksou = sou.UserData.Source;
     
@@ -515,7 +517,7 @@ function eMove(sou,eve)
                 hz.SetAbsMovePos(0,newz);
                 hz.MoveAbsolute(0,false);
             else
-                z1 = hz.GetPosition_Position(0); 
+                z1 = hz.GetPosition_Position(0);
                 zcursorUpdate(y2,z1);
                 vel = 4*(abs(y2)-0.75);
                 hz.SetVelParams(0,0,1,vel);
@@ -525,6 +527,11 @@ function eMove(sou,eve)
                     hz.SetAbsMovePos(0,0);
                 end
                 hz.MoveAbsolute(0,false);
+            end
+            if flag_tracking
+                pos = motorReadXYZ();
+                membraneFocus = pos(3);
+                motorMembraneZ(deltaZ - membraneFocus);
             end
         end
         if clicksou==hCross
@@ -1087,15 +1094,16 @@ function eBoxInfo(sou,eve)
     msgbox(sprintf('Selected area = %.1f x %.1f = %.1f um2\nDiagonal = %.1f um',...
         dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
 end
-function eGoToSample(sou,eve)   %DONE
+function eGoToSample(sou,eve)
     global XYZ;
     motorFocalPlane(XYZ);
 end
-function eSetMF(sou,eve)    %DONE
-    global membraneFocus membraneZ hImage flag_tracking;
+function eSetMF(sou,eve)
+    global membraneFocus membraneZ hImage deltaZ;
     membraneZ = motorReadMembraneZ();
     pos = motorReadXYZ();
     membraneFocus = pos(3);
+    deltaZ = membraneFocus + membraneZ;
     cm = hImage.ContextMenu;
     for ii=1:length(cm.Children)
         if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
@@ -1112,33 +1120,30 @@ function eSetMF(sou,eve)    %DONE
     end
     cm.Children(iT).Enable = 'on';
 end
-function eGoToMembrane(sou,eve) %DONE
+function eGoToMembrane(sou,eve)
     global membraneFocus hz;
     hz.SetAbsMovePos(0,membraneFocus);
-    hz.MoveAbsolute(true);
+    hz.MoveAbsolute(0,false);
 end
-function eSwitchTracking(sou,eve)   %DONE, BUT eMove STILL TO BE CHANGED
+function eSwitchTracking(sou,eve)
     global flag_tracking hImage;
     flag_tracking = ~flag_tracking;
     cm = hImage.ContextMenu;
+    
     for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
-            iF = ii;
-        elseif strcmp(cm.Children(ii).Text,'[CTRL+S] go to membrane focus')
+        if strcmp(cm.Children(ii).Text,'[S] go to sample focus')
             iS = ii;
-        elseif strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
+        elseif  strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
             iT = ii;
+            break
         end
     end
-    
-    if strcmp(cm.Children(iT).Checked,'off')
+    if isequal(cm.Children(iT).Checked,'off')
         cm.Children(iT).Checked = 'on';
         cm.Children(iS).Enable = 'off';
     else
         cm.Children(iT).Checked = 'off';
-        if strcmp(cm.Children(iF).Checked,'on')
-            cm.Children(iS).Enable = 'on';
-        end
+        cm.Children(iS).Enable = 'on';
     end
 end
 % -------------------------------------------------------------------------
@@ -1153,14 +1158,14 @@ function motorGoToXY(target,flag)
     flag_moved = true;
 end
 function motorFocalPlane(target)
-    global hz focus focuscoeff;
+    global hz focus focuscoeff membraneFocus;
 %     if focus.npt==3
 %         zval = focus.CC(1)*target(1) ...
 %              + focus.CC(2)*target(2)+focus.CC(3);
 %         hz.SetAbsMovePos(0,zval);
 %         hz.MoveAbsolute(0,0);
 %     end
-    if length(focuscoeff)>0
+    if ~isempty(focuscoeff) && ~isempty(membraneFocus) && hz.GetPosition_Position(0) ~= membraneFocus
         zval = focuscoeff(1)*target(1) ...
              + focuscoeff(2)*target(2)+focuscoeff(3);
         hz.SetAbsMovePos(0,zval);
