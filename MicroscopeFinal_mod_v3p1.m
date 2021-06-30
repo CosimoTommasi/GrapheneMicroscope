@@ -1095,11 +1095,15 @@ function eBoxInfo(sou,eve)
         dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
 end
 function eGoToSample(sou,eve)
-    global XYZ;
+    global XYZ hz;
+    
+    pos = motorReadXYZ();
+    hz.SetAbsMovePos(0,pos(3)*(1+1e-4));
+    hz.MoveAbsolute(0,true);
     motorFocalPlane(XYZ);
 end
 function eSetMF(sou,eve)
-    global membraneFocus membraneZ hImage deltaZ;
+    global membraneFocus membraneZ hImage deltaZ flag_tracking;
     membraneZ = motorReadMembraneZ();
     pos = motorReadXYZ();
     membraneFocus = pos(3);
@@ -1122,28 +1126,34 @@ function eSetMF(sou,eve)
 end
 function eGoToMembrane(sou,eve)
     global membraneFocus hz;
+    if isempty(membraneFocus)
+        return
+    end
     hz.SetAbsMovePos(0,membraneFocus);
     hz.MoveAbsolute(0,false);
 end
 function eSwitchTracking(sou,eve)
     global flag_tracking hImage;
-    flag_tracking = ~flag_tracking;
-    cm = hImage.ContextMenu;
     
+    cm = hImage.ContextMenu;
     for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'[S] go to sample focus')
-            iS = ii;
+        if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
+            iF = ii;
         elseif  strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
             iT = ii;
-            break
         end
     end
-    if isequal(cm.Children(iT).Checked,'off')
+    
+    if strcmp(cm.Children(iF).Checked, 'on')
+        flag_tracking = ~flag_tracking;
+    else
+        return
+    end
+    
+    if strcmp(cm.Children(iT).Checked,'off')
         cm.Children(iT).Checked = 'on';
-        cm.Children(iS).Enable = 'off';
     else
         cm.Children(iT).Checked = 'off';
-        cm.Children(iS).Enable = 'on';
     end
 end
 % -------------------------------------------------------------------------
