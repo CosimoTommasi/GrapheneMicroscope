@@ -1186,12 +1186,16 @@ function eMoveMembrane(sou,eve)
     end
     
     pos = round(motorReadMembraneZ(),3);
-    prompt = strcat('Insert membrane target position.    Actual position:  ',num2str(pos));
+    prompt = strcat('Insert membrane target position.  Actual position:  ',num2str(pos));
     answer = inputdlg(prompt,'Target',[1,60]);
     if isempty(answer)
         return
     end
     target = str2num(answer{1});
+    if target > 18
+        warndlg('ABORTED: target value would cause crashing on the base plane');
+        return
+    end
     motorMembraneZ(target);
 end
 % -------------------------------------------------------------------------
