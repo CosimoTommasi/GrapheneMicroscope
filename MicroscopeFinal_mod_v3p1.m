@@ -2,7 +2,8 @@
 %  Microscope
 % -------------------------------------------------------------------------
 % Versione 210430
-
+close all;
+clear all;
 clear timScope;
 
 % Parameters
@@ -17,6 +18,7 @@ global overlayColor textColor dnx dny;
 global tau valmax;
 global timScope;
 global flag_tracking flag_membraneMotor;
+global membraneZero;
 
 tau              = 1; 
 % uscope_mm4pix    = 1.85e-4; % Zoom 7 (fondoscala)
@@ -33,13 +35,14 @@ textColor        = [0 0 0];
 cropsize         = 3;
 valmax           = 200;
 ncolor           = 0;
+membraneZero = -3.1617;
 flag_tracking = false;
 flag_membraneMotor = true;
 % -------------------------------------------------------------------------
 % Motor config
 global addr ss fact;
 addr = [0 3 1];
-fact = [2 2 1]*150000;
+fact = [1 1 0.5]*283380;
 
 % -------------------------------------------------------------------------
 %  Create camera and motor objects, if not initialized yet
@@ -171,13 +174,14 @@ function winInit()
     m4.Separator = 'on';
     m5 = uimenu(cm1,'Text','[U] reset all focus','MenuSelected',@eFPreset);
     m6 = uimenu(cm1,'Text','[I] Integrate','MenuSelected',@eIntegrateToggle);
-    m6.Separator = 'on';
     m7 = uimenu(cm1, 'Text','[S] go to sample focus','MenuSelected', @eGoToSample);
+    m7.Separator = 'on';
     m8 = uimenu(cm1, 'Text','[CTRL+F] set membrane focus','MenuSelected', @eSetMF);
     m9 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', @eGoToMembrane);
     m10 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', @eSwitchTracking);
-    m10.Separator = 'on';
+    m11 = uimenu(cm1, 'Text','[SHIFT+SPACE] change membrane position','MenuSelected', @eMoveMembrane);
     mA = uimenu(cm1,'Text','    Background','MenuSelected',@eBgndToggle);
+    mA.Separator = 'on';
     mB = uimenu(cm1,'Text','[-] Use current image as Background','MenuSelected',@eBgndStore);
     mC = uimenu(cm1,'Text','    Load image file as Background','MenuSelected',@eBgndLoad);
     mD = uimenu(cm1,'Text','[MAIUSC+S] Save current image','MenuSelected',@eSaveImgName);
@@ -416,6 +420,7 @@ function eKeyPress(sou,eve)
     elseif strcmp(eve.Modifier{:},'shift')
         switch eve.Key
             case 's'; eSaveImgName([],[]);
+            case 'space'; eMoveMembrane([],[]);
         end
     end
 end
@@ -516,6 +521,10 @@ function eMove(sou,eve)
                 zcursorUpdate(y2,newz);
                 hz.SetAbsMovePos(0,newz);
                 hz.MoveAbsolute(0,false);
+                if flag_tracking
+                    motorMembraneZ(deltaZ - newz);
+                    membraneFocus = newz;
+                end
             else
                 z1 = hz.GetPosition_Position(0);
                 zcursorUpdate(y2,z1);
@@ -527,11 +536,6 @@ function eMove(sou,eve)
                     hz.SetAbsMovePos(0,0);
                 end
                 hz.MoveAbsolute(0,false);
-            end
-            if flag_tracking
-                pos = motorReadXYZ();
-                membraneFocus = pos(3);
-                motorMembraneZ(deltaZ - membraneFocus);
             end
         end
         if clicksou==hCross
@@ -1095,19 +1099,28 @@ function eBoxInfo(sou,eve)
         dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
 end
 function eGoToSample(sou,eve)
-    global XYZ hz;
+    global XYZ hz flag_tracking;
     
+    if flag_tracking
+        warndlg('Cannot go to the sample while tracking!');
+        return
+    end
+    % Initial shift to allow motorFocalPlane in case we are at the membrane
     pos = motorReadXYZ();
     hz.SetAbsMovePos(0,pos(3)*(1+1e-4));
     hz.MoveAbsolute(0,true);
+    
     motorFocalPlane(XYZ);
 end
 function eSetMF(sou,eve)
-    global membraneFocus membraneZ hImage deltaZ flag_tracking;
+    global membraneFocus hImage deltaZ flag_tracking;
     membraneZ = motorReadMembraneZ();
+%     disp(membraneZ);
     pos = motorReadXYZ();
     membraneFocus = pos(3);
+%     disp(membraneFocus);
     deltaZ = membraneFocus + membraneZ;
+    
     cm = hImage.ContextMenu;
     for ii=1:length(cm.Children)
         if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
@@ -1137,24 +1150,49 @@ function eSwitchTracking(sou,eve)
     
     cm = hImage.ContextMenu;
     for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
+        if strcmp(cm.Children(ii).Text,'[S] go to sample focus')
+            iS = ii;
+        elseif strcmp(cm.Children(ii).Text,'[CTRL+F] set membrane focus')
             iF = ii;
         elseif  strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
             iT = ii;
+        elseif strcmp(cm.Children(ii).Text,'[SHIFT+SPACE] change membrane position')
+            iM = ii;
         end
     end
     
     if strcmp(cm.Children(iF).Checked, 'on')
         flag_tracking = ~flag_tracking;
     else
+        warndlg('Cannot start tracking without membrane focus!');
         return
     end
     
     if strcmp(cm.Children(iT).Checked,'off')
         cm.Children(iT).Checked = 'on';
+        cm.Children(iM).Enable = 'off';
+        cm.Children(iS).Enable = 'off';
     else
         cm.Children(iT).Checked = 'off';
+        cm.Children(iM).Enable = 'on';
+        cm.Children(iS).Enable = 'on';
     end
+end
+function eMoveMembrane(sou,eve)
+    global flag_tracking
+    if flag_tracking
+        warndlg('Cannot move membrane while tracking!');
+        return
+    end
+    
+    pos = round(motorReadMembraneZ(),3);
+    prompt = strcat('Insert membrane target position.    Actual position:  ',num2str(pos));
+    answer = inputdlg(prompt,'Target',[1,60]);
+    if isempty(answer)
+        return
+    end
+    target = str2num(answer{1});
+    motorMembraneZ(target);
 end
 % -------------------------------------------------------------------------
 %  Motor utilities
@@ -1185,8 +1223,8 @@ function motorFocalPlane(target)
     
 end
 function motorMembraneZ(zpos)
-    global ss addr fact;
-    command = [1 num2str(addr(1)) 'MA' num2str(round(zpos*fact(1)),'%d') 13];
+    global ss addr fact membraneZero;
+    command = [1 num2str(addr(1)) 'MA' num2str(round((zpos+membraneZero)*fact(1)),'%d') 13];
     fprintf(ss,command);
 end
 function pos = motorReadXYZ()
@@ -1197,11 +1235,11 @@ function pos = motorReadXYZ()
     overviewMarkerUpdate(pos(1:2));
 end
 function zpos = motorReadMembraneZ()
-    global ss fact addr;
+    global ss fact addr membraneZero;
     command = [1 num2str(addr(1)) 'TP' 13];
     fprintf(ss,command);
     resp = fscanf(ss,'%s');
-    zpos = str2num(resp(4:end))/fact(1);
+    zpos = str2num(resp(4:end))/fact(1) - membraneZero;
 end
 function res = motorNotMoving()
     global hx hy hz;
