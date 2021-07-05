@@ -299,64 +299,205 @@ function winInit()
 end
 % -------------------------------------------------------------------------
 %  Event handlers
-function eScopeStart(sou,eve)
-    global cam imgMain imgBackgnd XYZ;
-    imgMain = double(fliplr(snapshot(cam)));
-    crossUpdateLabel();
-    zcursorUpdate(0,XYZ(3));
-end
-function eScopeRefresh(sou,eve)
-    global cam imgMain imgBackgnd;
-    global hzCurs hImage hhist hhist2 h1WinSq h1WinBL h1WinTR; 
-    global tau XYZ ncolor valmax;
-    % ---------------------------------------------------------------------
-    % 1. Integration and XYZ update (double serve?)
-    XYZ = motorReadXYZ();
-    if tau==1
-        imgMain = double(fliplr(snapshot(cam)))./imgBackgnd;
-    else
-        imgMain = (1-tau)*imgMain+tau*double(fliplr(snapshot(cam)))./imgBackgnd;
-    end
-    % ---------------------------------------------------------------------
-    % 2. Just keep the correct color
-    switch ncolor
-        case {1,2,3}
-            hImage.CData = imgMain(:,:,ncolor)*2;
-        otherwise
-            hImage.CData = uint8(imgMain);
-    end
-    % ---------------------------------------------------------------------
-    % 3. Update histogram
-    if ncolor>0
-        Nv = hist(hImage.CData(:)/valmax*200,linspace(0,255,length(hhist.BinCounts)));
-        Nv(1)   = 0;
-        Nv(end) = 0;
-        Nmax = max(Nv); % excluding saturations
-        imax = find(Nv==Nmax);
-        valmax = valmax*(hhist.BinEdges(imax)+hhist.BinWidth/2)/200;
-        hhist.BinCounts = Nv;
-        if strcmp(h1WinSq.Visible,'on')
-            subimg = hImage.CData(floor(h1WinBL.YData:h1WinTR.YData),...
-                floor(h1WinBL.XData:h1WinTR.XData))/valmax*200;
-            Nv = hist(subimg(:),...
-            linspace(0,255,length(hhist2.BinCounts)));
-            hhist2.BinCounts = Nv;
-        else
-            hhist2.BinCounts = 0*hhist2.BinCounts;
+function eBgndLoad(sou,eve)
+    global uscope_sizex uscope_sizey;
+    fn = imgetfile;
+    if length(fn)>0
+        tmp = imread(fn);
+        if all(size(tmp)==[uscope_sizey uscope_sizex 3])
+            bgndStore(double(tmp));
         end
+    end
+    endfunction eFPadd(sou,eve)
+    global focuspts XYZ hfpts;
+    npts = size(focuspts,1);
+    if npts<3
+        focuspts(npts+1,1:3)=XYZ;
+        tmp = overviewMm2pix(XYZ(1:2));
+        hfpts.XData = [hfpts.XData tmp(1)];
+        hfpts.YData = [hfpts.YData tmp(2)];
     else
-        hhist.BinCounts  = 0*hhist.BinCounts;
-        hhist2.BinCounts = 0*hhist2.BinCounts;
+        warndlg('Focal plane active: first erase info by pressing "U"');
     end
-   
-    drawnow();
+    focusCoeffCalc();
     crossUpdateLabel();
-    if abs(hzCurs.Position(2))>0.75
-        zcursorUpdate(hzCurs.Position(2),XYZ(3));
-    end
-    
 end
-function eKeyPress(sou,eve)  
+function eBgndStore(sou,eve)
+    global hImage imgMain;
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'    Background')
+            hm = cm.Children(ii);
+        end
+    end
+    switch hm.Checked
+        case 'off'
+            bgndStore(imgMain);
+        case 'on'
+           msgbox('First disable the background pls...');
+    end
+end
+function eBgndToggle(sou,eve)
+    global hImage flag_background imgBackgnd bgndfile;
+    global uscope_sizex uscope_sizey;
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'    Background')
+            hm = cm.Children(ii);
+            im = ii;
+        end
+    end
+    switch hm.Checked
+        case 'on'               
+            flag_background = false;
+            imgBackgnd = ones(uscope_sizey,uscope_sizex,3);
+            hm.Checked = 'off';
+            cm.Children(im-1).Enable = 'on';
+        case 'off'
+            flag_background = exist(bgndfile);
+            if flag_background
+                load(bgndfile);
+                hm.Checked = 'on';
+                cm.Children(im-1).Enable = 'off';
+            end
+    end
+end
+function eBoxInfo(sou,eve)
+    global h1WinInfo h1WinSq uscope_mm4pix;
+    dx = h1WinSq.XData(2)-h1WinSq.XData(1);
+    dy = h1WinSq.YData(3)-h1WinSq.YData(2);
+    dxum = dx*uscope_mm4pix*1e3;
+    dyum = dy*uscope_mm4pix*1e3;
+    msgbox(sprintf('Selected area = %.1f x %.1f = %.1f um2\nDiagonal = %.1f um',...
+        dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
+end
+function eClick(sou,eve)
+    global z1 XYZ h1WinSq h3WinSq;
+    tic;
+    clickinfo.Source = sou;
+    clickinfo.Event = eve;
+    if (sou==h1WinSq)|(sou==h3WinSq)
+        clickinfo.XData = sou.XData;
+        clickinfo.YData = sou.YData;
+    end
+    hf = sou.Parent.Parent;
+    hf.UserData = clickinfo;
+    hf.WindowButtonMotionFcn = @eMove;
+    hf.WindowButtonUpFcn = @eRelease;
+    z1 = XYZ(3);
+end
+function eEraseFP(sou,eve)
+    global focuspts hfpts;
+    pt = get(gca,'CurrentPoint');
+    npts = length(hfpts.XData);
+    mindist = 10e10;
+    for ii=1:npts
+       dist = sqrt((hfpts.XData(ii)-pt(1,1))^2 ...
+                  +(hfpts.YData(ii)-pt(1,2))^2)
+       if dist<mindist
+           mindist = dist;
+           imin = ii;
+       end
+    end
+    tmp = focuspts([1:(imin-1) (imin+1):npts],1:3);
+    focuspts = tmp;
+    xv = [];
+    yv = [];
+    for ii=1:npts-1
+        tmp = overviewMm2pix(focuspts(ii,1:2))
+        xv(ii) = tmp(1);
+        yv(ii) = tmp(2);
+    end
+    hfpts.XData = xv;
+    hfpts.YData = yv;
+    focusCoeffCalc();
+end
+function eEraseOverview(sou,eve)
+    global hOverview;
+    hOverview.CData = hOverview.CData*0;
+end
+function eExit(sou,eve)
+    global hf1 hImage hzCurs hCross timScope;
+    hf1.Name = 'uScope stopped!';
+    hImage.ButtonDownFcn = [];
+    hzCurs.ButtonDownFcn = [];
+    hCross.ButtonDownFcn = [];
+    timScope.delete();
+end
+function eFPadd(sou,eve)
+    global focuspts hfpts XYZ;
+    npt = size(focuspts,1);
+    if npt<3
+        focuspts(npt+1,1) = XYZ(1);
+        focuspts(npt+1,2) = XYZ(2);
+        focuspts(npt+1,3) = XYZ(3);
+        newpt = overviewMm2pix(XYZ(1:2));
+        hfpts.XData(npt+1) = newpt(1); 
+        hfpts.YData(npt+1) = newpt(2); 
+    end
+    focusCoeffCalc(); 
+end
+function eFPreset(sou,eve)
+    global focuspts hfpts;
+    focuspts = [];
+    hfpts.XData = [];
+    hfpts.YData = [];
+    focusCoeffCalc();
+end
+function eGotoFP(sou,eve)
+    global focuspts hfpts;
+    pt = get(gca,'CurrentPoint');npts = length(hfpts.XData);
+    mindist = 10e10;
+    for ii=1:npts
+       dist = sqrt((hfpts.XData(ii)-pt(1,1))^2 ...
+                  +(hfpts.YData(ii)-pt(1,2))^2)
+       if dist<mindist
+           mindist = dist;
+           imin = ii;
+       end
+    end
+    motorGoToXY(focuspts(imin,:),false);
+end
+function eGoToMembrane(sou,eve)
+    global membraneFocus hz;
+    if isempty(membraneFocus)
+        return
+    end
+    hz.SetAbsMovePos(0,membraneFocus);
+    hz.MoveAbsolute(0,false);
+end
+function eGoToSample(sou,eve)
+    global XYZ hz flag_tracking;
+    
+    if flag_tracking
+        warndlg('Cannot go to the sample while tracking!');
+        return
+    end
+    % Initial shift to allow motorFocalPlane in case we are at the membrane
+    pos = motorReadXYZ();
+    hz.SetAbsMovePos(0,pos(3)*(1+1e-4));
+    hz.MoveAbsolute(0,true);
+    
+    motorFocalPlane(XYZ);
+end
+function eIntegrateToggle(sou,eve)
+    global hImage tau;
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'[I] Integrate')
+            hm = cm.Children(ii);
+        end
+    end
+    switch hm.Checked
+        case 'on'
+            tau = 1;
+            hm.Checked = 'off';
+        case 'off'
+            tau = 0.1;
+            hm.Checked = 'on';
+    end
+end
+function eKeyPress(sou,eve)
     global ha1main ha1z;
     global hCross hInfo hzCurs XYZ;
     global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
@@ -424,385 +565,6 @@ function eKeyPress(sou,eve)
         end
     end
 end
-function eScroll(sou,eve)
-    pt = sou.CurrentPoint./sou.Position(3:4);
-    ha = sou.Children(end);
-    scrollfact = 1.5;
-    if eve.VerticalScrollCount==-1            
-        scrollfact = 1/scrollfact;
-    end
-    oldpos = ha.Position;
-    WHv = oldpos(3:4)*scrollfact;
-    BLv = (oldpos(1:2)-pt)*scrollfact+pt;
-    if BLv(1)>0
-        BLv (1)=0;
-    end
-    if BLv(2)>0
-        BLv(2)=0;
-    end
-    if WHv(1)<1
-        WHv(2) = WHv(2)/WHv(1);
-        WHv(1)=1;
-    end
-    if WHv(2)<1
-        
-    end
-    ha.Position = [BLv WHv];
-end
-function eClick(sou,eve)
-    global z1 XYZ h1WinSq h3WinSq;
-    tic;
-    clickinfo.Source = sou;
-    clickinfo.Event = eve;
-    if (sou==h1WinSq)|(sou==h3WinSq)
-        clickinfo.XData = sou.XData;
-        clickinfo.YData = sou.YData;
-    end
-    hf = sou.Parent.Parent;
-    hf.UserData = clickinfo;
-    hf.WindowButtonMotionFcn = @eMove;
-    hf.WindowButtonUpFcn = @eRelease;
-    z1 = XYZ(3);
-end
-function eMove(sou,eve)
-    global hx hy hz z1 
-    global hf1 hCross hzCurs h1WinSq h1WinBL h1WinTR;
-    global hf3 h3WinSq h3WinBL h3WinTR;
-    global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
-    global XYZ;
-    global flag_tracking membraneFocus deltaZ
-    clickpt  = sou.UserData.Event.IntersectionPoint;
-    clicksou = sou.UserData.Source;
-    
-    delta = toc;
-    pt = get(gca,'CurrentPoint');
-    x2 = pt(1,1);
-    y2 = pt(1,2);
-    if sou==hf1
-        if clicksou==h1WinBL
-            x1 = max(h1WinTR.XData,x2+10);
-            y1 = max(h1WinTR.YData,y2+10);
-            h1WinBL.XData = x2;
-            h1WinBL.YData = y2;
-            h1WinTR.XData = x1;
-            h1WinTR.YData = y1;
-            h1WinSq.XData = [x2 x1 x1 x2 x2];
-            h1WinSq.YData = [y2 y2 y1 y1 y2];
-            box1UpdateLabel();
-        end
-        if clicksou==h1WinTR
-            x1 = min(x2-10,h1WinBL.XData);
-            y1 = min(y2-10,h1WinBL.YData);
-            h1WinBL.XData = x1;
-            h1WinBL.YData = y1;
-            h1WinTR.XData = x2;
-            h1WinTR.YData = y2;
-            h1WinSq.XData = [x1 x2 x2 x1 x1];
-            h1WinSq.YData = [y1 y1 y2 y2 y1];
-            box1UpdateLabel();
-        end
-        if clicksou==h1WinSq
-            dx = x2-clickpt(1);
-            dy = y2-clickpt(2);
-            h1WinSq.XData = sou.UserData.XData+dx;
-            h1WinSq.YData = sou.UserData.YData+dy;
-            h1WinTR.XData = h1WinSq.XData(3);
-            h1WinTR.YData = h1WinSq.YData(3);
-            h1WinBL.XData = h1WinSq.XData(1);
-            h1WinBL.YData = h1WinSq.YData(1);
-            box1UpdateLabel();
-        end
-        if clicksou==hzCurs
-            hf1.Pointer = 'custom';
-            y2 = min(max(-1,y2),1);
-            if abs(y2)<0.75
-                hz.SetVelParams(0,0,1,3);
-                newz = min(50,max(0,z1+(y2+(4*y2)^3)/50));
-                zcursorUpdate(y2,newz);
-                hz.SetAbsMovePos(0,newz);
-                hz.MoveAbsolute(0,false);
-                if flag_tracking
-                    motorMembraneZ(deltaZ - newz);
-                    membraneFocus = newz;
-                end
-            else
-                z1 = hz.GetPosition_Position(0);
-                zcursorUpdate(y2,z1);
-                vel = 4*(abs(y2)-0.75);
-                hz.SetVelParams(0,0,1,vel);
-                if y2>0
-                    hz.SetAbsMovePos(0,50);
-                else
-                    hz.SetAbsMovePos(0,0);
-                end
-                hz.MoveAbsolute(0,false);
-            end
-        end
-        if clicksou==hCross
-            dx = x2-uscope_sizex/2;
-            dy = y2-uscope_sizey/2;
-            dr = sqrt(dx*dx+dy*dy);
-            drclipped = min(400,dr);
-            dx = dx*drclipped/dr;
-            dy = dy*drclipped/dr;
-            crossUpdatePos(dx,dy);
-            crossUpdateLabel(dx,dy);
-            hx.SetVelParams(0,0,1,abs(dx)/400);
-            hy.SetVelParams(0,0,1,abs(dy)/400);
-            if (dx<0)
-                hx.SetAbsMovePos(0,0);
-                hx.MoveAbsolute(0,0);
-            else
-                hx.SetAbsMovePos(0,25);
-                hx.MoveAbsolute(0,0);
-            end
-            if (dy<0)
-                hy.SetAbsMovePos(0,0);
-                hy.MoveAbsolute(0,0);
-            else
-                hy.SetAbsMovePos(0,25);
-                hy.MoveAbsolute(0,0);
-            end
-            motorFocalPlane(XYZ(1:2));
-        end
-    end
-    if sou==hf3
-        if clicksou==h3WinBL
-            
-            x1 = max(h3WinTR.XData,x2+uscope_sizex*uscope_mm4pix*overview_pix4mm);
-            y1 = max(h3WinTR.YData,y2+uscope_sizey*uscope_mm4pix*overview_pix4mm);
-            h3WinBL.XData = x2;
-            h3WinBL.YData = y2;
-            h3WinTR.XData = x1;
-            h3WinTR.YData = y1;
-            h3WinSq.XData = [x2 x1 x1 x2 x2];
-            h3WinSq.YData = [y2 y2 y1 y1 y2];
-            box3UpdateLabel();
-        end
-        if clicksou==h3WinTR
-            x1 = min(h3WinBL.XData,x2-uscope_sizex*uscope_mm4pix*overview_pix4mm);
-            y1 = min(h3WinBL.YData,y2-uscope_sizey*uscope_mm4pix*overview_pix4mm);
-            h3WinBL.XData = x1;
-            h3WinBL.YData = y1;
-            h3WinTR.XData = x2;
-            h3WinTR.YData = y2;
-            h3WinSq.XData = [x1 x2 x2 x1 x1];
-            h3WinSq.YData = [y1 y1 y2 y2 y1];
-            box3UpdateLabel();
-        end
-        if clicksou==h3WinSq
-            dx = x2-clickpt(1);
-            dy = y2-clickpt(2);
-            h3WinSq.XData = sou.UserData.XData+dx;
-            h3WinSq.YData = sou.UserData.YData+dy;
-            h3WinTR.XData = h3WinSq.XData(3);
-            h3WinTR.YData = h3WinSq.YData(3);
-            h3WinBL.XData = h3WinSq.XData(1);
-            h3WinBL.YData = h3WinSq.YData(1);
-            box3UpdateLabel();
-        end
-    end
-end
-function eRelease(sou,eve)
-    global hf1 hf2 hf3 hli hsq hx hy hz;
-    global hImage hzCurs hCross hOverview hfpts;
-    global uscope_sizex uscope_sizey XYZ uscope_mm4pix;
-    global flag_saveoverview;
-    sou.WindowButtonMotionFcn = [];
-    hf1.Pointer = 'crosshair';
-    clicksou = sou.UserData.Source;
-    if clicksou == hzCurs
-        hz.StopImmediate(0);
-        hz.SetVelParams(0,0,1,1);
-        zcursorUpdate(0,hz.GetPosition_Position(0));
-        flag_saveoverview = true;
-    end
-    if clicksou == hCross
-        hx.StopImmediate(0);
-        hy.StopImmediate(0);
-        hx.SetVelParams(0,0,1,0.5);
-        hy.SetVelParams(0,0,1,0.5);
-    end
-    if clicksou == hImage
-        eve = sou.UserData.Event;
-        px = eve.IntersectionPoint(1)-uscope_sizex/2;
-        py = eve.IntersectionPoint(2)-uscope_sizey/2;
-        button = eve.Button;
-        if button==1
-            motorGoToXY(XYZ + [px +py 0]*uscope_mm4pix,false);
-        else
-            % anything else?
-        end
-    end
-    if clicksou == hOverview
-        eve = sou.UserData.Event;
-        tmp = overviewPix2mm(eve.IntersectionPoint(1:2));
-        button = eve.Button;
-        if button==1
-            motorGoToXY([tmp 0],false);
-        else
-            % anything else?
-        end
-    end
-    if clicksou == hfpts
-        eve = sou.UserData.Event;
-        if eve.Button==1
-            npts = length(hfpts.XData);
-            mindist = 10e10;
-            for ii=1:npts
-               dist = sqrt((hfpts.XData(ii)-eve.IntersectionPoint(1))^2 ...
-                          +(hfpts.YData(ii)-eve.IntersectionPoint(2))^2);
-               if dist<mindist
-                   mindist = dist;
-                   imin = ii;
-               end
-            end
-            tmp = overviewPix2mm([hfpts.XData(imin) hfpts.YData(imin)]);
-            motorGoToXY([tmp 0],false);
-        end
-    end
-    crossUpdatePos(0,0);
-    
-    % needed?
-    delta = toc;
-    if delta>0.5
-    else
-    end
-    
-end
-function eRGBSelect(sou,eve)
-    global ncolor;
-    cm = sou.Parent;
-    nmen   = length(cm.Children);
-    ncolor = sou.Position-1;
-    for ii=nmen-3:nmen
-        cm.Children(ii).Checked = 'off';
-    end
-    cm.Children(nmen-ncolor).Checked = 'on';
-end
-function eIntegrateToggle(sou,eve)
-    global hImage tau;
-    cm = hImage.ContextMenu;
-    for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'[I] Integrate')
-            hm = cm.Children(ii);
-        end
-    end
-    switch hm.Checked
-        case 'on'
-            tau = 1;
-            hm.Checked = 'off';
-        case 'off'
-            tau = 0.1;
-            hm.Checked = 'on';
-    end
-end
-function eBgndToggle(sou,eve)
-    global hImage flag_background imgBackgnd bgndfile;
-    global uscope_sizex uscope_sizey;
-    cm = hImage.ContextMenu;
-    for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'    Background')
-            hm = cm.Children(ii);
-            im = ii;
-        end
-    end
-    switch hm.Checked
-        case 'on'               
-            flag_background = false;
-            imgBackgnd = ones(uscope_sizey,uscope_sizex,3);
-            hm.Checked = 'off';
-            cm.Children(im-1).Enable = 'on';
-        case 'off'
-            flag_background = exist(bgndfile);
-            if flag_background
-                load(bgndfile);
-                hm.Checked = 'on';
-                cm.Children(im-1).Enable = 'off';
-            end
-    end
-end
-function eBgndStore(sou,eve)
-    global hImage imgMain;
-    cm = hImage.ContextMenu;
-    for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'    Background')
-            hm = cm.Children(ii);
-        end
-    end
-    switch hm.Checked
-        case 'off'
-            bgndStore(imgMain);
-        case 'on'
-           msgbox('First disable the background pls...');
-    end
-end
-function eBgndLoad(sou,eve)
-    global uscope_sizex uscope_sizey;
-    fn = imgetfile;
-    if length(fn)>0
-        tmp = imread(fn);
-        if all(size(tmp)==[uscope_sizey uscope_sizex 3])
-            bgndStore(double(tmp));
-        end
-    end
-    endfunction eFPadd(sou,eve)
-    global focuspts XYZ hfpts;
-    npts = size(focuspts,1);
-    if npts<3
-        focuspts(npts+1,1:3)=XYZ;
-        tmp = overviewMm2pix(XYZ(1:2));
-        hfpts.XData = [hfpts.XData tmp(1)];
-        hfpts.YData = [hfpts.YData tmp(2)];
-    else
-        warndlg('Focal plane active: first erase info by pressing "U"');
-    end
-    focusCoeffCalc();
-    crossUpdateLabel();
-end
-function eFPreset(sou,eve)
-    global focuspts hfpts;
-    focuspts = [];
-    hfpts.XData = [];
-    hfpts.YData = [];
-    focusCoeffCalc();
-end
-function eFPadd(sou,eve)
-    global focuspts hfpts XYZ;
-    npt = size(focuspts,1);
-    if npt<3
-        focuspts(npt+1,1) = XYZ(1);
-        focuspts(npt+1,2) = XYZ(2);
-        focuspts(npt+1,3) = XYZ(3);
-        newpt = overviewMm2pix(XYZ(1:2));
-        hfpts.XData(npt+1) = newpt(1); 
-        hfpts.YData(npt+1) = newpt(2); 
-    end
-    focusCoeffCalc(); 
-end
-function eSaveImg(sou,eve,n,ncols)
-    global imgMain;
-    fn = sprintf('img-%d_cols-%d.bmp',[n,ncols]);
-    imwrite(flipud(uint8(imgMain)),fn);
-end
-function eSaveImgName(sou,eve)
-    global imgMain;
-    fn = inputdlg('Insert image name with extension:  ','Input');
-    imwrite(flipud(uint8(imgMain)),fn{1});
-end
-function eStopMotors(sou,eve)
-    global flag_stopmapping;
-    flag_stopmapping = true;
-    motorGoToXY(motorReadXYZ(),false);
-end
-function eExit(sou,eve)
-    global hf1 hImage hzCurs hCross timScope;
-    hf1.Name = 'uScope stopped!';
-    hImage.ButtonDownFcn = [];
-    hzCurs.ButtonDownFcn = [];
-    hCross.ButtonDownFcn = [];
-    timScope.delete();
-end
 function eLoadOverview(sou,eve)
     global hOverview;
     fn = imgetfile;
@@ -813,54 +575,77 @@ function eLoadOverview(sou,eve)
         end
     end
 end
-function eSaveOverview(sou,eve)
+function eMapInfo(sou,eve)
+    global h3WinBL h3WinTR uscope_mm4pix uscope_sizex uscope_sizey overview_pix4mm;
+    overlap = 200;
+    mapWH =[(h3WinTR.XData-h3WinBL.XData) ...
+            (h3WinTR.YData-h3WinBL.YData)]/overview_pix4mm;
+    % Number of requested frames ny*nx
+    mapWHpix = mapWH/uscope_mm4pix;
+    nx = floor((mapWHpix(1)-overlap)/(uscope_sizex-overlap));
+    ny = floor((mapWHpix(2)-overlap)/(uscope_sizey-overlap));
+    msgbox(sprintf('Selecte area corresponds to %d x %d = %d images',nx+1,ny+1,(nx+1)*(ny+1)),'Map info');
+end
+function eMapSave(sou,eve)
+    global h3WinBL h3WinTR uscope_mm4pix uscope_sizex uscope_sizey overview_pix4mm;
     global hOverview;
-    fn = imsave;
-    imwrite(flipud(hOverview.CData),fn);
-end
-function eEraseOverview(sou,eve)
-    global hOverview;
-    hOverview.CData = hOverview.CData*0;
-end
-function eEraseFP(sou,eve)
-    global focuspts hfpts;
-    pt = get(gca,'CurrentPoint');
-    npts = length(hfpts.XData);
-    mindist = 10e10;
-    for ii=1:npts
-       dist = sqrt((hfpts.XData(ii)-pt(1,1))^2 ...
-                  +(hfpts.YData(ii)-pt(1,2))^2)
-       if dist<mindist
-           mindist = dist;
-           imin = ii;
-       end
+    overlap = 200;
+    % Map center in overview pix coordinates
+    mapc_opix  = [(h3WinBL.XData+h3WinTR.XData)/2 ...
+                  (h3WinBL.YData+h3WinTR.YData)/2];
+    % Map size in camera pix coordinates 
+    mapWH_cpix = [(h3WinTR.XData-h3WinBL.XData)  ...
+                  (h3WinTR.YData-h3WinBL.YData)] ...
+                  /overview_pix4mm/uscope_mm4pix;
+    nx = floor((mapWH_cpix(1)-overlap)/(uscope_sizex-overlap));
+    ny = floor((mapWH_cpix(2)-overlap)/(uscope_sizey-overlap));
+    % Map size in overview pix coordinates
+    mapWH_opix = [(nx+1)*uscope_sizex-nx*overlap ...
+                  (ny+1)*uscope_sizey-ny*overlap ] ...
+                  * uscope_mm4pix * overview_pix4mm;
+    xv = round(((-mapWH_opix(1)/2):(+mapWH_opix(1)/2))+mapc_opix(1));
+    yv = round(((-mapWH_opix(2)/2):(+mapWH_opix(2)/2))+mapc_opix(2));
+    
+    imgOverview=flipud(hOverview.CData(yv,xv,1:3));
+    sizeO = size(imgOverview);
+    stepX = floor(sizeO(2)/(nx+1));
+    stepY = floor(sizeO(1)/(ny+1));
+    
+    f=figure();
+    imshow(imgOverview);
+    hold on;
+    for row = 1 : stepY : sizeO(1)
+        line([1, sizeO(2)], [row, row], 'Color', 'k', 'LineWidth', 1);
     end
-    tmp = focuspts([1:(imin-1) (imin+1):npts],1:3);
-    focuspts = tmp;
-    xv = [];
-    yv = [];
-    for ii=1:npts-1
-        tmp = overviewMm2pix(focuspts(ii,1:2))
-        xv(ii) = tmp(1);
-        yv(ii) = tmp(2);
+    for col = 1 : stepX : sizeO(2)
+        line([col, col], [1, sizeO(1)], 'Color', 'k', 'LineWidth', 1);
     end
-    hfpts.XData = xv;
-    hfpts.YData = yv;
-    focusCoeffCalc();
-end
-function eGotoFP(sou,eve)
-    global focuspts hfpts;
-    pt = get(gca,'CurrentPoint');npts = length(hfpts.XData);
-    mindist = 10e10;
-    for ii=1:npts
-       dist = sqrt((hfpts.XData(ii)-pt(1,1))^2 ...
-                  +(hfpts.YData(ii)-pt(1,2))^2)
-       if dist<mindist
-           mindist = dist;
-           imin = ii;
-       end
+    
+    ii = 64;
+    for xx = 1 : nx+1
+        posX = stepX*(xx-1)+10;
+        ii=ii+1;
+        text(posX,20,char(ii),'Color','k','FontSize',14);
     end
-    motorGoToXY(focuspts(imin,:),false);
+    ii=1;
+    for yy = 2 : ny+1
+        posY = (stepY*(yy-1)+20);
+        ii=ii+1;
+        text( 30, posY, int2str(ii), 'Color', 'k','FontSize',14);
+    end
+    
+    OverviewGrid = getframe(f).cdata;
+    imwrite(OverviewGrid,imsave);
+    close(f);
+    
+    defanswer = {'map_log.txt','30'};
+    inputs = inputdlg({'Insert map log file name: ','Insert lighting value in percentage:  '}, 'Input',[1,50],defanswer);
+    logF = fopen(inputs{1},'w');
+    fprintf(logF, '[DATA LOG FOR SAMPLE SCAN]\n');
+    fprintf(logF, 'rows \t columns \t tot \t light \n');
+    fprintf(logF,'%d \t %d \t %d \t %d \n', [ny+1, nx+1, (ny+1)*(nx+1), str2num(inputs{2})]);
+    fclose(logF);
+    
 end
 function eMapStart(sou,eve)
     global XYZ h3WinBL h3WinTR uscope_mm4pix uscope_sizex uscope_sizey overview_pix4mm;
@@ -1017,100 +802,342 @@ function eMapStart(sou,eve)
             end
     end
 end
-function eMapSave(sou,eve)
-    global h3WinBL h3WinTR uscope_mm4pix uscope_sizex uscope_sizey overview_pix4mm;
-    global hOverview;
-    overlap = 200;
-    % Map center in overview pix coordinates
-    mapc_opix  = [(h3WinBL.XData+h3WinTR.XData)/2 ...
-                  (h3WinBL.YData+h3WinTR.YData)/2];
-    % Map size in camera pix coordinates 
-    mapWH_cpix = [(h3WinTR.XData-h3WinBL.XData)  ...
-                  (h3WinTR.YData-h3WinBL.YData)] ...
-                  /overview_pix4mm/uscope_mm4pix;
-    nx = floor((mapWH_cpix(1)-overlap)/(uscope_sizex-overlap));
-    ny = floor((mapWH_cpix(2)-overlap)/(uscope_sizey-overlap));
-    % Map size in overview pix coordinates
-    mapWH_opix = [(nx+1)*uscope_sizex-nx*overlap ...
-                  (ny+1)*uscope_sizey-ny*overlap ] ...
-                  * uscope_mm4pix * overview_pix4mm;
-    xv = round(((-mapWH_opix(1)/2):(+mapWH_opix(1)/2))+mapc_opix(1));
-    yv = round(((-mapWH_opix(2)/2):(+mapWH_opix(2)/2))+mapc_opix(2));
+function eMove(sou,eve)
+    global hx hy hz z1 
+    global hf1 hCross hzCurs h1WinSq h1WinBL h1WinTR;
+    global hf3 h3WinSq h3WinBL h3WinTR;
+    global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
+    global XYZ;
+    global flag_tracking membraneFocus deltaZ
+    clickpt  = sou.UserData.Event.IntersectionPoint;
+    clicksou = sou.UserData.Source;
     
-    imgOverview=flipud(hOverview.CData(yv,xv,1:3));
-    sizeO = size(imgOverview);
-    stepX = floor(sizeO(2)/(nx+1));
-    stepY = floor(sizeO(1)/(ny+1));
-    
-    f=figure();
-    imshow(imgOverview);
-    hold on;
-    for row = 1 : stepY : sizeO(1)
-        line([1, sizeO(2)], [row, row], 'Color', 'k', 'LineWidth', 1);
+    delta = toc;
+    pt = get(gca,'CurrentPoint');
+    x2 = pt(1,1);
+    y2 = pt(1,2);
+    if sou==hf1
+        if clicksou==h1WinBL
+            x1 = max(h1WinTR.XData,x2+10);
+            y1 = max(h1WinTR.YData,y2+10);
+            h1WinBL.XData = x2;
+            h1WinBL.YData = y2;
+            h1WinTR.XData = x1;
+            h1WinTR.YData = y1;
+            h1WinSq.XData = [x2 x1 x1 x2 x2];
+            h1WinSq.YData = [y2 y2 y1 y1 y2];
+            box1UpdateLabel();
+        end
+        if clicksou==h1WinTR
+            x1 = min(x2-10,h1WinBL.XData);
+            y1 = min(y2-10,h1WinBL.YData);
+            h1WinBL.XData = x1;
+            h1WinBL.YData = y1;
+            h1WinTR.XData = x2;
+            h1WinTR.YData = y2;
+            h1WinSq.XData = [x1 x2 x2 x1 x1];
+            h1WinSq.YData = [y1 y1 y2 y2 y1];
+            box1UpdateLabel();
+        end
+        if clicksou==h1WinSq
+            dx = x2-clickpt(1);
+            dy = y2-clickpt(2);
+            h1WinSq.XData = sou.UserData.XData+dx;
+            h1WinSq.YData = sou.UserData.YData+dy;
+            h1WinTR.XData = h1WinSq.XData(3);
+            h1WinTR.YData = h1WinSq.YData(3);
+            h1WinBL.XData = h1WinSq.XData(1);
+            h1WinBL.YData = h1WinSq.YData(1);
+            box1UpdateLabel();
+        end
+        if clicksou==hzCurs
+            hf1.Pointer = 'custom';
+            y2 = min(max(-1,y2),1);
+            if abs(y2)<0.75
+                hz.SetVelParams(0,0,1,3);
+                newz = min(50,max(0,z1+(y2+(4*y2)^3)/50));
+                zcursorUpdate(y2,newz);
+                hz.SetAbsMovePos(0,newz);
+                hz.MoveAbsolute(0,false);
+                if flag_tracking
+                    if deltaZ - newz > 18
+                        warndlg('ABORTED: target value would cause crashing on the base plane');
+                        return
+                    end
+                    motorMembraneZ(deltaZ - newz);
+                    membraneFocus = newz;
+                end
+            else
+                z1 = hz.GetPosition_Position(0);
+                zcursorUpdate(y2,z1);
+                vel = 4*(abs(y2)-0.75);
+                hz.SetVelParams(0,0,1,vel);
+                if y2>0
+                    hz.SetAbsMovePos(0,50);
+                else
+                    hz.SetAbsMovePos(0,0);
+                end
+                hz.MoveAbsolute(0,false);
+            end
+        end
+        if clicksou==hCross
+            dx = x2-uscope_sizex/2;
+            dy = y2-uscope_sizey/2;
+            dr = sqrt(dx*dx+dy*dy);
+            drclipped = min(400,dr);
+            dx = dx*drclipped/dr;
+            dy = dy*drclipped/dr;
+            crossUpdatePos(dx,dy);
+            crossUpdateLabel(dx,dy);
+            hx.SetVelParams(0,0,1,abs(dx)/400);
+            hy.SetVelParams(0,0,1,abs(dy)/400);
+            if (dx<0)
+                hx.SetAbsMovePos(0,0);
+                hx.MoveAbsolute(0,0);
+            else
+                hx.SetAbsMovePos(0,25);
+                hx.MoveAbsolute(0,0);
+            end
+            if (dy<0)
+                hy.SetAbsMovePos(0,0);
+                hy.MoveAbsolute(0,0);
+            else
+                hy.SetAbsMovePos(0,25);
+                hy.MoveAbsolute(0,0);
+            end
+            motorFocalPlane(XYZ(1:2));
+        end
     end
-    for col = 1 : stepX : sizeO(2)
-        line([col, col], [1, sizeO(1)], 'Color', 'k', 'LineWidth', 1);
+    if sou==hf3
+        if clicksou==h3WinBL
+            
+            x1 = max(h3WinTR.XData,x2+uscope_sizex*uscope_mm4pix*overview_pix4mm);
+            y1 = max(h3WinTR.YData,y2+uscope_sizey*uscope_mm4pix*overview_pix4mm);
+            h3WinBL.XData = x2;
+            h3WinBL.YData = y2;
+            h3WinTR.XData = x1;
+            h3WinTR.YData = y1;
+            h3WinSq.XData = [x2 x1 x1 x2 x2];
+            h3WinSq.YData = [y2 y2 y1 y1 y2];
+            box3UpdateLabel();
+        end
+        if clicksou==h3WinTR
+            x1 = min(h3WinBL.XData,x2-uscope_sizex*uscope_mm4pix*overview_pix4mm);
+            y1 = min(h3WinBL.YData,y2-uscope_sizey*uscope_mm4pix*overview_pix4mm);
+            h3WinBL.XData = x1;
+            h3WinBL.YData = y1;
+            h3WinTR.XData = x2;
+            h3WinTR.YData = y2;
+            h3WinSq.XData = [x1 x2 x2 x1 x1];
+            h3WinSq.YData = [y1 y1 y2 y2 y1];
+            box3UpdateLabel();
+        end
+        if clicksou==h3WinSq
+            dx = x2-clickpt(1);
+            dy = y2-clickpt(2);
+            h3WinSq.XData = sou.UserData.XData+dx;
+            h3WinSq.YData = sou.UserData.YData+dy;
+            h3WinTR.XData = h3WinSq.XData(3);
+            h3WinTR.YData = h3WinSq.YData(3);
+            h3WinBL.XData = h3WinSq.XData(1);
+            h3WinBL.YData = h3WinSq.YData(1);
+            box3UpdateLabel();
+        end
     end
-    
-    ii = 64;
-    for xx = 1 : nx+1
-        posX = stepX*(xx-1)+10;
-        ii=ii+1;
-        text(posX,20,char(ii),'Color','k','FontSize',14);
-    end
-    ii=1;
-    for yy = 2 : ny+1
-        posY = (stepY*(yy-1)+20);
-        ii=ii+1;
-        text( 30, posY, int2str(ii), 'Color', 'k','FontSize',14);
-    end
-    
-    OverviewGrid = getframe(f).cdata;
-    imwrite(OverviewGrid,imsave);
-    close(f);
-    
-    defanswer = {'map_log.txt','30'};
-    inputs = inputdlg({'Insert map log file name: ','Insert lighting value in percentage:  '}, 'Input',[1,50],defanswer);
-    logF = fopen(inputs{1},'w');
-    fprintf(logF, '[DATA LOG FOR SAMPLE SCAN]\n');
-    fprintf(logF, 'rows \t columns \t tot \t light \n');
-    fprintf(logF,'%d \t %d \t %d \t %d \n', [ny+1, nx+1, (ny+1)*(nx+1), str2num(inputs{2})]);
-    fclose(logF);
-    
 end
-function eMapInfo(sou,eve)
-    global h3WinBL h3WinTR uscope_mm4pix uscope_sizex uscope_sizey overview_pix4mm;
-    overlap = 200;
-    mapWH =[(h3WinTR.XData-h3WinBL.XData) ...
-            (h3WinTR.YData-h3WinBL.YData)]/overview_pix4mm;
-    % Number of requested frames ny*nx
-    mapWHpix = mapWH/uscope_mm4pix;
-    nx = floor((mapWHpix(1)-overlap)/(uscope_sizex-overlap));
-    ny = floor((mapWHpix(2)-overlap)/(uscope_sizey-overlap));
-    msgbox(sprintf('Selecte area corresponds to %d x %d = %d images',nx+1,ny+1,(nx+1)*(ny+1)),'Map info');
-end
-function eBoxInfo(sou,eve)
-    global h1WinInfo h1WinSq uscope_mm4pix;
-    dx = h1WinSq.XData(2)-h1WinSq.XData(1);
-    dy = h1WinSq.YData(3)-h1WinSq.YData(2);
-    dxum = dx*uscope_mm4pix*1e3;
-    dyum = dy*uscope_mm4pix*1e3;
-    msgbox(sprintf('Selected area = %.1f x %.1f = %.1f um2\nDiagonal = %.1f um',...
-        dxum,dyum,dxum*dyum,sqrt(dxum^2+dyum^2)),'Box info');
-end
-function eGoToSample(sou,eve)
-    global XYZ hz flag_tracking;
-    
+function eMoveMembrane(sou,eve)
+    global flag_tracking
     if flag_tracking
-        warndlg('Cannot go to the sample while tracking!');
+        warndlg('Cannot move membrane while tracking!');
         return
     end
-    % Initial shift to allow motorFocalPlane in case we are at the membrane
-    pos = motorReadXYZ();
-    hz.SetAbsMovePos(0,pos(3)*(1+1e-4));
-    hz.MoveAbsolute(0,true);
     
-    motorFocalPlane(XYZ);
+    pos = round(motorReadMembraneZ(),3);
+    prompt = strcat('Insert membrane target position.  Actual position:  ',num2str(pos));
+    answer = inputdlg(prompt,'Target',[1,60]);
+    if isempty(answer)
+        return
+    end
+    target = str2num(answer{1});
+    if target > 18
+        warndlg('ABORTED: target value would cause crashing on the base plane');
+        return
+    end
+    motorMembraneZ(target);
+end
+function eRelease(sou,eve)
+    global hf1 hf2 hf3 hli hsq hx hy hz;
+    global hImage hzCurs hCross hOverview hfpts;
+    global uscope_sizex uscope_sizey XYZ uscope_mm4pix;
+    global flag_saveoverview;
+    sou.WindowButtonMotionFcn = [];
+    hf1.Pointer = 'crosshair';
+    clicksou = sou.UserData.Source;
+    if clicksou == hzCurs
+        hz.StopImmediate(0);
+        hz.SetVelParams(0,0,1,1);
+        zcursorUpdate(0,hz.GetPosition_Position(0));
+        flag_saveoverview = true;
+    end
+    if clicksou == hCross
+        hx.StopImmediate(0);
+        hy.StopImmediate(0);
+        hx.SetVelParams(0,0,1,0.5);
+        hy.SetVelParams(0,0,1,0.5);
+    end
+    if clicksou == hImage
+        eve = sou.UserData.Event;
+        px = eve.IntersectionPoint(1)-uscope_sizex/2;
+        py = eve.IntersectionPoint(2)-uscope_sizey/2;
+        button = eve.Button;
+        if button==1
+            motorGoToXY(XYZ + [px +py 0]*uscope_mm4pix,false);
+        else
+            % anything else?
+        end
+    end
+    if clicksou == hOverview
+        eve = sou.UserData.Event;
+        tmp = overviewPix2mm(eve.IntersectionPoint(1:2));
+        button = eve.Button;
+        if button==1
+            motorGoToXY([tmp 0],false);
+        else
+            % anything else?
+        end
+    end
+    if clicksou == hfpts
+        eve = sou.UserData.Event;
+        if eve.Button==1
+            npts = length(hfpts.XData);
+            mindist = 10e10;
+            for ii=1:npts
+               dist = sqrt((hfpts.XData(ii)-eve.IntersectionPoint(1))^2 ...
+                          +(hfpts.YData(ii)-eve.IntersectionPoint(2))^2);
+               if dist<mindist
+                   mindist = dist;
+                   imin = ii;
+               end
+            end
+            tmp = overviewPix2mm([hfpts.XData(imin) hfpts.YData(imin)]);
+            motorGoToXY([tmp 0],false);
+        end
+    end
+    crossUpdatePos(0,0);
+    
+    % needed?
+    delta = toc;
+    if delta>0.5
+    else
+    end
+    
+end
+function eRGBSelect(sou,eve)
+    global ncolor;
+    cm = sou.Parent;
+    nmen   = length(cm.Children);
+    ncolor = sou.Position-1;
+    for ii=nmen-3:nmen
+        cm.Children(ii).Checked = 'off';
+    end
+    cm.Children(nmen-ncolor).Checked = 'on';
+end
+function eSaveImg(sou,eve,n,ncols)
+    global imgMain;
+    fn = sprintf('img-%d_cols-%d.bmp',[n,ncols]);
+    imwrite(flipud(uint8(imgMain)),fn);
+end
+function eSaveImgName(sou,eve)
+    global imgMain;
+    fn = inputdlg('Insert image name with extension:  ','Input');
+    imwrite(flipud(uint8(imgMain)),fn{1});
+end
+function eSaveOverview(sou,eve)
+    global hOverview;
+    fn = imsave;
+    imwrite(flipud(hOverview.CData),fn);
+end
+function eScopeRefresh(sou,eve)
+    global cam imgMain imgBackgnd;
+    global hzCurs hImage hhist hhist2 h1WinSq h1WinBL h1WinTR; 
+    global tau XYZ ncolor valmax;
+    % ---------------------------------------------------------------------
+    % 1. Integration and XYZ update (double serve?)
+    XYZ = motorReadXYZ();
+    if tau==1
+        imgMain = double(fliplr(snapshot(cam)))./imgBackgnd;
+    else
+        imgMain = (1-tau)*imgMain+tau*double(fliplr(snapshot(cam)))./imgBackgnd;
+    end
+    % ---------------------------------------------------------------------
+    % 2. Just keep the correct color
+    switch ncolor
+        case {1,2,3}
+            hImage.CData = imgMain(:,:,ncolor)*2;
+        otherwise
+            hImage.CData = uint8(imgMain);
+    end
+    % ---------------------------------------------------------------------
+    % 3. Update histogram
+    if ncolor>0
+        Nv = hist(hImage.CData(:)/valmax*200,linspace(0,255,length(hhist.BinCounts)));
+        Nv(1)   = 0;
+        Nv(end) = 0;
+        Nmax = max(Nv); % excluding saturations
+        imax = find(Nv==Nmax);
+        valmax = valmax*(hhist.BinEdges(imax)+hhist.BinWidth/2)/200;
+        hhist.BinCounts = Nv;
+        if strcmp(h1WinSq.Visible,'on')
+            subimg = hImage.CData(floor(h1WinBL.YData:h1WinTR.YData),...
+                floor(h1WinBL.XData:h1WinTR.XData))/valmax*200;
+            Nv = hist(subimg(:),...
+            linspace(0,255,length(hhist2.BinCounts)));
+            hhist2.BinCounts = Nv;
+        else
+            hhist2.BinCounts = 0*hhist2.BinCounts;
+        end
+    else
+        hhist.BinCounts  = 0*hhist.BinCounts;
+        hhist2.BinCounts = 0*hhist2.BinCounts;
+    end
+   
+    drawnow();
+    crossUpdateLabel();
+    if abs(hzCurs.Position(2))>0.75
+        zcursorUpdate(hzCurs.Position(2),XYZ(3));
+    end
+    
+end
+function eScopeStart(sou,eve)
+    global cam imgMain imgBackgnd XYZ;
+    imgMain = double(fliplr(snapshot(cam)));
+    crossUpdateLabel();
+    zcursorUpdate(0,XYZ(3));
+end
+function eScroll(sou,eve)
+    pt = sou.CurrentPoint./sou.Position(3:4);
+    ha = sou.Children(end);
+    scrollfact = 1.5;
+    if eve.VerticalScrollCount==-1            
+        scrollfact = 1/scrollfact;
+    end
+    oldpos = ha.Position;
+    WHv = oldpos(3:4)*scrollfact;
+    BLv = (oldpos(1:2)-pt)*scrollfact+pt;
+    if BLv(1)>0
+        BLv (1)=0;
+    end
+    if BLv(2)>0
+        BLv(2)=0;
+    end
+    if WHv(1)<1
+        WHv(2) = WHv(2)/WHv(1);
+        WHv(1)=1;
+    end
+    if WHv(2)<1
+        
+    end
+    ha.Position = [BLv WHv];
 end
 function eSetMF(sou,eve)
     global membraneFocus hImage deltaZ flag_tracking;
@@ -1137,13 +1164,10 @@ function eSetMF(sou,eve)
     end
     cm.Children(iT).Enable = 'on';
 end
-function eGoToMembrane(sou,eve)
-    global membraneFocus hz;
-    if isempty(membraneFocus)
-        return
-    end
-    hz.SetAbsMovePos(0,membraneFocus);
-    hz.MoveAbsolute(0,false);
+function eStopMotors(sou,eve)
+    global flag_stopmapping;
+    flag_stopmapping = true;
+    motorGoToXY(motorReadXYZ(),false);
 end
 function eSwitchTracking(sou,eve)
     global flag_tracking hImage;
@@ -1177,26 +1201,6 @@ function eSwitchTracking(sou,eve)
         cm.Children(iM).Enable = 'on';
         cm.Children(iS).Enable = 'on';
     end
-end
-function eMoveMembrane(sou,eve)
-    global flag_tracking
-    if flag_tracking
-        warndlg('Cannot move membrane while tracking!');
-        return
-    end
-    
-    pos = round(motorReadMembraneZ(),3);
-    prompt = strcat('Insert membrane target position.  Actual position:  ',num2str(pos));
-    answer = inputdlg(prompt,'Target',[1,60]);
-    if isempty(answer)
-        return
-    end
-    target = str2num(answer{1});
-    if target > 18
-        warndlg('ABORTED: target value would cause crashing on the base plane');
-        return
-    end
-    motorMembraneZ(target);
 end
 % -------------------------------------------------------------------------
 %  Motor utilities
