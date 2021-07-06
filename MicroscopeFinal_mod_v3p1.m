@@ -507,19 +507,17 @@ function eHomeMembrane(sou,eve)
     set(findobj(h,'style','pushbutton'),'Visible','off');
     pts = {'','.','..','...'};
     ind = 1;
-%     pos = motorReadMembraneZ();
-%     pause(1);
     while true
         ind = mod(ind,4)+1;
         set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Wait ',pts{ind}));
         pos = motorReadMembraneZ();
-        pause(0.5);
+        pause(0.7);
         ind = mod(ind,4)+1;
         set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Wait ',pts{ind}));
         if pos == motorReadMembraneZ()
             break
         end
-        pause(0.5);
+        pause(0.7);
     end
     membraneZero = pos;
     
