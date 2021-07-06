@@ -35,9 +35,10 @@ textColor        = [0 0 0];
 cropsize         = 3;
 valmax           = 200;
 ncolor           = 0;
-membraneZero = -3.1617;
 flag_tracking = false;
 flag_membraneMotor = true;
+% Membrane Homing Offset
+membraneZero = -8.003;
 % -------------------------------------------------------------------------
 % Motor config
 global addr ss fact;
@@ -180,6 +181,7 @@ function winInit()
     m9 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', @eGoToMembrane);
     m10 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', @eSwitchTracking);
     m11 = uimenu(cm1, 'Text','[SHIFT+SPACE] change membrane position','MenuSelected', @eMoveMembrane);
+    m12 = uimenu(cm1, 'Text','[H] home membrane motor','MenuSelected', @eHomeMembrane);
     mA = uimenu(cm1,'Text','    Background','MenuSelected',@eBgndToggle);
     mA.Separator = 'on';
     mB = uimenu(cm1,'Text','[-] Use current image as Background','MenuSelected',@eBgndStore);
@@ -480,6 +482,50 @@ function eGoToSample(sou,eve)
     
     motorFocalPlane(XYZ);
 end
+function eHomeMembrane(sou,eve)
+    global membraneZero hImage
+    
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'[T] membrane track ON/OFF')
+            iT = ii;
+        elseif strcmp(cm.Children(ii).Text,'[H] home membrane motor')
+            iH = ii;
+        end
+    end
+    
+    if strcmp(cm.Children(iT).Checked,'on')
+        warndlg('Cannot home membrane motor while tracking!');
+        return
+    end
+    
+%     startpos = motorReadMembraneZ();
+    motorMembraneZ(-30);
+    membraneZero = 0;
+    
+    h = msgbox('Homing in process. Wait ','Home');
+    set(findobj(h,'style','pushbutton'),'Visible','off');
+    pts = {'','.','..','...'};
+    ind = 1;
+%     pos = motorReadMembraneZ();
+%     pause(1);
+    while true
+        ind = mod(ind,4)+1;
+        set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Wait ',pts{ind}));
+        pos = motorReadMembraneZ();
+        pause(0.5);
+        ind = mod(ind,4)+1;
+        set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Wait ',pts{ind}));
+        if pos == motorReadMembraneZ()
+            break
+        end
+        pause(0.5);
+    end
+    membraneZero = pos;
+    
+    cm.Children(iH).Checked = 'on';
+    msgbox(sprintf('Homing completed! Remember to update membraneZero variable with value: %.4f',membraneZero),'Home','replace');
+end
 function eIntegrateToggle(sou,eve)
     global hImage tau;
     cm = hImage.ContextMenu;
@@ -537,6 +583,7 @@ function eKeyPress(sou,eve)
     % -------------------------------------------------------------------------
             case 's';   eGoToSample([],[]);
             case 't';   eSwitchTracking([],[]);
+            case 'h';   eHomeMembrane([],[]);
     % -------------------------------------------------------------------------
             case 'c'; setColorScheme(0);
             case 'r'; setColorScheme(1);
@@ -952,9 +999,10 @@ function eMoveMembrane(sou,eve)
         return
     end
     
-    pos = round(motorReadMembraneZ(),3);
-    prompt = strcat('Insert membrane target position.  Actual position:  ',num2str(pos));
-    answer = inputdlg(prompt,'Target',[1,60]);
+    motorReadMembraneZ();
+%     pos = round(motorReadMembraneZ(),3);
+%     prompt = strcat('Insert membrane target position.  Actual position:  ',num2str(pos));
+    answer = inputdlg(sprintf('Insert membrane target position.  Current position: %.3f',motorReadMembraneZ()),'Target',[1,60]);
     if isempty(answer)
         return
     end
@@ -1182,6 +1230,8 @@ function eSwitchTracking(sou,eve)
             iT = ii;
         elseif strcmp(cm.Children(ii).Text,'[SHIFT+SPACE] change membrane position')
             iM = ii;
+        elseif strcmp(cm.Children(ii).Text,'[H] home membrane motor')
+            iH = ii;
         end
     end
     
@@ -1196,10 +1246,12 @@ function eSwitchTracking(sou,eve)
         cm.Children(iT).Checked = 'on';
         cm.Children(iM).Enable = 'off';
         cm.Children(iS).Enable = 'off';
+        cm.Children(iH).Enable = 'off';
     else
         cm.Children(iT).Checked = 'off';
         cm.Children(iM).Enable = 'on';
         cm.Children(iS).Enable = 'on';
+        cm.Children(iH).Enable = 'on';
     end
 end
 % -------------------------------------------------------------------------
