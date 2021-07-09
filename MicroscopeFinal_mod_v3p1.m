@@ -37,8 +37,13 @@ valmax           = 200;
 ncolor           = 0;
 flag_tracking = false;
 flag_membraneMotor = true;
-% Membrane Homing Offset
-membraneZero = -8.003;
+% -------------------------------------------------------------------------
+% Parameters import from txt file
+FID = fopen('Microscope_parameters.txt');
+tline = fgetl(FID);
+ind = strfind(tline,' = ');
+membraneZero = str2num(tline(ind+3:end));
+fclose(FID);
 % -------------------------------------------------------------------------
 % Motor config
 global addr ss fact;
@@ -503,26 +508,30 @@ function eHomeMembrane(sou,eve)
     motorMembraneZ(-30);
     membraneZero = 0;
     
-    h = msgbox('Homing in process. Wait ','Home');
+    h = msgbox('Homing in process. Please wait ','Home');
     set(findobj(h,'style','pushbutton'),'Visible','off');
     pts = {'','.','..','...'};
     ind = 1;
     while true
         ind = mod(ind,4)+1;
-        set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Wait ',pts{ind}));
+        set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Please wait ',pts{ind}));
         pos = motorReadMembraneZ();
-        pause(0.7);
+        pause(1);
         ind = mod(ind,4)+1;
-        set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Wait ',pts{ind}));
+        set(findobj(h,'Tag','MessageBox'),'String',strcat('Homing in process. Please wait ',pts{ind}));
         if pos == motorReadMembraneZ()
             break
         end
-        pause(0.7);
+        pause(1);
     end
     membraneZero = pos;
+    close(h);
     
     cm.Children(iH).Checked = 'on';
-    msgbox(sprintf('Homing completed! Remember to update membraneZero variable with value: %.4f',membraneZero),'Home','replace');
+    
+    FID = fopen('Microscope_parameters.txt','w');
+    fwrite(FID,sprintf('membraneZero = %.3f',membraneZero));
+    fclose(FID);
 end
 function eIntegrateToggle(sou,eve)
     global hImage tau;
@@ -905,8 +914,8 @@ function eMove(sou,eve)
                 hz.SetAbsMovePos(0,newz);
                 hz.MoveAbsolute(0,false);
                 if flag_tracking
-                    if deltaZ - newz > 18
-                        warndlg('ABORTED: target value would cause crashing on the base plane');
+                    if (deltaZ - newz) > 18
+                        warndlg('ABORTED: target value would cause crashing on the base plane. Tracking is now out of focus.');
                         return
                     end
                     motorMembraneZ(deltaZ - newz);
