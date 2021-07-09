@@ -9,7 +9,7 @@ clear timScope;
 % Parameters
 global cam;
 global imgBackgnd;
-global uscope_mm4pix uscope_sizex uscope_sizey;
+global uscope_mm4pix uscope_mm4pix_Vec uscope_sizex uscope_sizey;
 global overview_pix4mm overview_sizex overview_sizey;
 global cropsize;
 global ncolor;
@@ -21,8 +21,8 @@ global flag_tracking flag_membraneMotor;
 global membraneZero;
 
 tau              = 1; 
-% uscope_mm4pix    = 1.85e-4; % Zoom 7 (fondoscala)
-uscope_mm4pix    = 4.3e-4; % Zoom 3
+uscope_mm4pix_Vec = [4.3e-4, 1.85e-4];  % Zoom 3 e Zoom 7 (fondoscala)
+uscope_mm4pix    = uscope_mm4pix_Vec(1); % Zoom 3 all'avvio
 uscope_sizex     = 1920;
 uscope_sizey     = 1080;
 overview_pix4mm  = 400; % pixel per mm on overview
@@ -172,21 +172,22 @@ function winInit()
 % -------------------------------------------------------------------------
 %  Context menu
     cm1 = uicontextmenu(hf1);
-    m0 = uimenu(cm1,'Text','[C] Full &Color','MenuSelected',@eRGBSelect);
-    m1 = uimenu(cm1,'Text','[R] Red Channel','MenuSelected',@eRGBSelect);
-    m2 = uimenu(cm1,'Text','[G] Green Channel','MenuSelected',@eRGBSelect);
-    m3 = uimenu(cm1,'Text','[B] Blue Channel','MenuSelected',@eRGBSelect);
-    m4 = uimenu(cm1,'Text','[F] + sample focus point','MenuSelected',@eFPadd);
-    m4.Separator = 'on';
-    m5 = uimenu(cm1,'Text','[U] reset all focus','MenuSelected',@eFPreset);
-    m6 = uimenu(cm1,'Text','[I] Integrate','MenuSelected',@eIntegrateToggle);
-    m7 = uimenu(cm1, 'Text','[S] go to sample focus','MenuSelected', @eGoToSample);
-    m7.Separator = 'on';
-    m8 = uimenu(cm1, 'Text','[CTRL+F] set membrane focus','MenuSelected', @eSetMF);
-    m9 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', @eGoToMembrane);
-    m10 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', @eSwitchTracking);
-    m11 = uimenu(cm1, 'Text','[SHIFT+SPACE] change membrane position','MenuSelected', @eMoveMembrane);
-    m12 = uimenu(cm1, 'Text','[H] home membrane motor','MenuSelected', @eHomeMembrane);
+    m0 = uimenu(cm1,'Text','[Z] Change Zoom parameters','MenuSelected',@eZoomChange);
+    m1 = uimenu(cm1,'Text','[C] Full &Color','MenuSelected',@eRGBSelect);
+    m2 = uimenu(cm1,'Text','[R] Red Channel','MenuSelected',@eRGBSelect);
+    m3 = uimenu(cm1,'Text','[G] Green Channel','MenuSelected',@eRGBSelect);
+    m4 = uimenu(cm1,'Text','[B] Blue Channel','MenuSelected',@eRGBSelect);
+    m5 = uimenu(cm1,'Text','[F] + sample focus point','MenuSelected',@eFPadd);
+    m5.Separator = 'on';
+    m6 = uimenu(cm1,'Text','[U] reset all focus','MenuSelected',@eFPreset);
+    m7 = uimenu(cm1,'Text','[I] Integrate','MenuSelected',@eIntegrateToggle);
+    m8 = uimenu(cm1, 'Text','[S] go to sample focus','MenuSelected', @eGoToSample);
+    m8.Separator = 'on';
+    m9 = uimenu(cm1, 'Text','[CTRL+F] set membrane focus','MenuSelected', @eSetMF);
+    m10 = uimenu(cm1, 'Text','[CTRL+S] go to membrane focus','MenuSelected', @eGoToMembrane);
+    m11 = uimenu(cm1, 'Text','[T] membrane track ON/OFF','MenuSelected', @eSwitchTracking);
+    m12 = uimenu(cm1, 'Text','[SHIFT+SPACE] change membrane position','MenuSelected', @eMoveMembrane);
+    m13 = uimenu(cm1, 'Text','[H] home membrane motor','MenuSelected', @eHomeMembrane);
     mA = uimenu(cm1,'Text','    Background','MenuSelected',@eBgndToggle);
     mA.Separator = 'on';
     mB = uimenu(cm1,'Text','[-] Use current image as Background','MenuSelected',@eBgndStore);
@@ -195,17 +196,17 @@ function winInit()
     mE = uimenu(cm1,'Text','[DEL] Stop motors and maps','MenuSelected',@eStopMotors);
     mE.Separator = 'on';
     mF = uimenu(cm1,'Text','[ESC] Stop microscope','MenuSelected',@eExit);
-    m0.Checked = 'on';
+    m1.Checked = 'on';
     if flag_background
         mA.Checked = 'on';
         mB.Enable = 'off';
     end
-    if isequal(m8.Checked,'off')
-        m9.Enable = 'off';
+    if isequal(m9.Checked,'off')
         m10.Enable = 'off';
+        m11.Enable = 'off';
     end
     if size(focuspts)<3
-        m7.Enable = 'off';
+        m8.Enable = 'off';
     end
         
     hImage.ContextMenu = cm1;
@@ -283,7 +284,7 @@ function winInit()
     hfpts = plot(xv,yv,'o','MarkerFaceColor',[1 1 1 ],'MarkerEdgeColor',overlayColor);
     hfpts.ButtonDownFcn = @eClick;
     cm3a = uicontextmenu(hf3);
-    m0 = uimenu(cm3a,'Text','Erase focal point','MenuSelected',@eEraseFP);
+    m1 = uimenu(cm3a,'Text','Erase focal point','MenuSelected',@eEraseFP);
     m1 = uimenu(cm3a,'Text','Goto focal point','MenuSelected',@eGotoFP);
     hfpts.ContextMenu = cm3a;
     figureSizeReset(hf3);
@@ -588,9 +589,11 @@ function eKeyPress(sou,eve)
             case 'f'; eFPadd([],[]);
             case 'u'; eFPreset([],[]);
     % -------------------------------------------------------------------------
-            case 's';   eGoToSample([],[]);
-            case 't';   eSwitchTracking([],[]);
-            case 'h';   eHomeMembrane([],[]);
+            case 's'; eGoToSample([],[]);
+            case 't'; eSwitchTracking([],[]);
+            case 'h'; eHomeMembrane([],[]);
+    % -------------------------------------------------------------------------
+            case 'z'; eZoomChange([],[]);
     % -------------------------------------------------------------------------
             case 'c'; setColorScheme(0);
             case 'r'; setColorScheme(1);
@@ -1261,17 +1264,25 @@ function eSwitchTracking(sou,eve)
         cm.Children(iH).Enable = 'on';
     end
 end
+function eZoomChange(sou,eve)
+    global uscope_mm4pix uscope_mm4pix_Vec uscope_sizex uscope_sizey
+    global overview_sizex overview_sizey overview_pix4mm
+    
+    StartInd = find(uscope_mm4pix_Vec == uscope_mm4pix);
+    zooms = {'Zoom x3','Zoom x7'};
+    [ind,tf] = listdlg('ListString',zooms,'PromptString','WARNING: changing Zoom will close and reopen every window',...
+        'SelectionMode','single','InitialValue',StartInd,'ListSize',[330,40], 'Name','Zoom Select');
+    if ~tf
+        return
+    end
+    uscope_mm4pix = uscope_mm4pix_Vec(ind);
+    overview_sizex   = floor((25+uscope_sizex*uscope_mm4pix)*overview_pix4mm);
+    overview_sizey   = floor((25+uscope_sizey*uscope_mm4pix)*overview_pix4mm);
+    winInit();
+
+end
 % -------------------------------------------------------------------------
 %  Motor utilities
-function motorGoToXY(target,flag)
-    global hx hy flag_moved;
-    hx.SetAbsMovePos(0,target(1));
-    hx.MoveAbsolute(0,flag); % flag=true aspetta fine movimento 
-    hy.SetAbsMovePos(0,target(2));
-    hy.MoveAbsolute(0,flag);
-    motorFocalPlane(target);
-    flag_moved = true;
-end
 function motorFocalPlane(target)
     global hz focus focuscoeff membraneFocus;
 %     if focus.npt==3
@@ -1289,24 +1300,19 @@ function motorFocalPlane(target)
     end   
     
 end
+function motorGoToXY(target,flag)
+    global hx hy flag_moved;
+    hx.SetAbsMovePos(0,target(1));
+    hx.MoveAbsolute(0,flag); % flag=true aspetta fine movimento 
+    hy.SetAbsMovePos(0,target(2));
+    hy.MoveAbsolute(0,flag);
+    motorFocalPlane(target);
+    flag_moved = true;
+end
 function motorMembraneZ(zpos)
     global ss addr fact membraneZero;
     command = [1 num2str(addr(1)) 'MA' num2str(round((zpos+membraneZero)*fact(1)),'%d') 13];
     fprintf(ss,command);
-end
-function pos = motorReadXYZ()
-    global hx hy hz;
-    pos(1) = hx.GetPosition_Position(0);
-    pos(2) = hy.GetPosition_Position(0);
-    pos(3) = hz.GetPosition_Position(0);
-    overviewMarkerUpdate(pos(1:2));
-end
-function zpos = motorReadMembraneZ()
-    global ss fact addr membraneZero;
-    command = [1 num2str(addr(1)) 'TP' 13];
-    fprintf(ss,command);
-    resp = fscanf(ss,'%s');
-    zpos = str2num(resp(4:end))/fact(1) - membraneZero;
 end
 function res = motorNotMoving()
     global hx hy hz;
@@ -1319,8 +1325,31 @@ function res = motorNotMoving()
         res = false;
     end
 end
+function zpos = motorReadMembraneZ()
+    global ss fact addr membraneZero;
+    command = [1 num2str(addr(1)) 'TP' 13];
+    fprintf(ss,command);
+    resp = fscanf(ss,'%s');
+    zpos = str2num(resp(4:end))/fact(1) - membraneZero;
+end
+function pos = motorReadXYZ()
+    global hx hy hz;
+    pos(1) = hx.GetPosition_Position(0);
+    pos(2) = hy.GetPosition_Position(0);
+    pos(3) = hz.GetPosition_Position(0);
+    overviewMarkerUpdate(pos(1:2));
+end
 % -------------------------------------------------------------------------
 %  Other utilities
+function bgndStore(img)
+    global imgBackgnd bgndfile;
+    imgBackgnd = img;
+    dn = 10;
+    imgBackgnd(:,:,1)=imgBackgnd(:,:,1)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,1)));
+    imgBackgnd(:,:,2)=imgBackgnd(:,:,2)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,2)));
+    imgBackgnd(:,:,3)=imgBackgnd(:,:,3)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,3)));
+    save(bgndfile,'imgBackgnd');
+end
 function boxToggle(sou)
     global hf1 h1WinSq h1WinBL h1WinTR h1WinInfo;
     global hf3 h3WinSq h3WinBL h3WinTR h3WinInfo;
@@ -1367,72 +1396,27 @@ function box3UpdateLabel()
     h3WinInfo.String = sprintf('%.2fx%.2f mm2',round(dxmm,1),round(dymm,1));
     h3WinInfo.Position = [10+h3WinSq.XData(1) h3WinSq.YData(3)];
 end
-function setColorScheme(nc)
-    global ncolor hImage;
-    ncolor = nc;
-    cm     = hImage.ContextMenu;
-    nmen   = length(cm.Children);
-    for ii=nmen-3:nmen
-        cm.Children(ii).Checked = 'off';
+function crossUpdateLabel(dx,dy)
+    global hInfo XYZ;
+    tmpx = sprintf('%.3f\n',XYZ(1));
+    if XYZ(1)<10
+        tmpx = [' ' tmpx];
     end
-    cm.Children(nmen-ncolor).Checked = 'on';
-end
-function bgndStore(img)
-    global imgBackgnd bgndfile;
-    imgBackgnd = img;
-    dn = 10;
-    imgBackgnd(:,:,1)=imgBackgnd(:,:,1)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,1)));
-    imgBackgnd(:,:,2)=imgBackgnd(:,:,2)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,2)));
-    imgBackgnd(:,:,3)=imgBackgnd(:,:,3)/mean(mean(imgBackgnd(dn:end-dn,dn:end-dn,3)));
-    save(bgndfile,'imgBackgnd');
-end
-function overviewStore()
-    global overview_pix4mm uscope_sizex uscope_sizey uscope_mm4pix
-    global cropsize hOverview imgMain XYZ;
-    npx = overview_pix4mm/((uscope_sizex-2*cropsize)*uscope_mm4pix)+1;
-    npy = overview_pix4mm/((uscope_sizey-2*cropsize)*uscope_mm4pix)+1;
-    xv1 = round(linspace(1+cropsize,uscope_sizex-cropsize,npx));
-    yv1 = round(linspace(1+cropsize,uscope_sizey-cropsize,npy));
-    iyv = round((0+yv1*uscope_mm4pix+XYZ(2))*overview_pix4mm);
-    ixv = round((0+xv1*uscope_mm4pix+XYZ(1))*overview_pix4mm);
-    hOverview.CData(iyv,ixv,1:3) = imgMain(yv1,xv1,1:3);
-end
-function overviewMarkerUpdate(pos)
-    global hActPos uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
-    xv = [-1  1  1 -1 -1]*uscope_sizex/2*uscope_mm4pix;
-    yv = [-1 -1  1  1 -1]*uscope_sizey/2*uscope_mm4pix;
-    hActPos.XData = ( 0+pos(1)+xv+uscope_sizex/2*uscope_mm4pix)*overview_pix4mm;
-    hActPos.YData = ( 0+pos(2)+yv+uscope_sizey/2*uscope_mm4pix)*overview_pix4mm;
-end
-function focusCoeffCalc()
-    global hfpts focuspts focuscoeff hf1 hImage;
-    cm = hImage.ContextMenu;
-    for ii=1:length(cm.Children)
-        if strcmp(cm.Children(ii).Text,'[S] go to sample focus')
-            break
-        end
+    tmpy = sprintf('%.3f',XYZ(2));
+    if XYZ(2)<10
+        tmpy = [' ' tmpy];
     end
-    if size(focuspts,1)==3
-        Zv = focuspts(:,3);
-        XY1m = focuspts;
-        XY1m(:,3) = 1;
-        if det(XY1m)~=0
-            focuscoeff = inv(XY1m)*Zv;    
-            hfpts.MarkerFaceColor = [0 1 0];
-            hf1.Name = 'uScope - Camera feed [Focal plane is active]';
-            cm.Children(ii).Enable = 'on';
-        else
-            focuscoeff = [];
-            hfpts.MarkerFaceColor = [1 1 1];
-            hf1.Name = 'uScope - Camera feed [Invalid focal plane]';
-            cm.Children(ii).Enable = 'off';
-        end
-    else
-        focuscoeff = []; 
-        hfpts.MarkerFaceColor = [1 1 1];
-        hf1.Name = sprintf('uScope - Camera feed [%d focal points]',size(focuspts,1));
-        cm.Children(ii).Enable = 'off';
-    end
+    hInfo.String = [tmpx tmpy];
+end
+function crossUpdatePos(posx,posy)
+    global hCross uscope_sizex uscope_sizey hInfo;
+    AA = 10;
+    BB = 100;
+    xv = [-BB -AA   0   0   0 +AA +BB +AA   0   0   0 -AA -BB NaN 0];
+    yv = [  0   0 +AA +BB +AA   0   0   0 -AA -BB -AA   0   0 NaN 0];
+    hCross.XData = [xv+posx 0] + uscope_sizex/2;
+    hCross.YData = [yv+posy 0] + uscope_sizey/2;
+    hInfo.Position = [uscope_sizex/2+10+posx uscope_sizey/2-5+posy];
 end
 function figureSizeReset(sou)
 
@@ -1463,56 +1447,6 @@ function figureSizeReset(sou)
         hf3.Position = pos;
         ha3main.Position = [0 0 1 1];
     end
-end
-function crossUpdateLabel(dx,dy)
-    global hInfo XYZ;
-    tmpx = sprintf('%.3f\n',XYZ(1));
-    if XYZ(1)<10
-        tmpx = [' ' tmpx];
-    end
-    tmpy = sprintf('%.3f',XYZ(2));
-    if XYZ(2)<10
-        tmpy = [' ' tmpy];
-    end
-    hInfo.String = [tmpx tmpy];
-end
-function crossUpdatePos(posx,posy)
-    global hCross uscope_sizex uscope_sizey hInfo;
-    AA = 10;
-    BB = 100;
-    xv = [-BB -AA   0   0   0 +AA +BB +AA   0   0   0 -AA -BB NaN 0];
-    yv = [  0   0 +AA +BB +AA   0   0   0 -AA -BB -AA   0   0 NaN 0];
-    hCross.XData = [xv+posx 0] + uscope_sizex/2;
-    hCross.YData = [yv+posy 0] + uscope_sizey/2;
-    hInfo.Position = [uscope_sizex/2+10+posx uscope_sizey/2-5+posy];
-end
-function zcursorUpdate(pos,value)
-    global hzCurs overlayColor;
-    pos = max(min(pos,1),-1);
-    hzCurs.Position(2) = pos;
-    hzCurs.String = num2str(value,'%+.3f');
-    if(abs(pos)>0.75)
-        hzCurs.BackgroundColor = overlayColor/2;
-    else
-        hzCurs.BackgroundColor = overlayColor;
-    end
-end
-function [Int,Int_HSV]=pickBgnd()
-    global imgMain;
-    
-    %%ADD NAVIGATION FEATURE BEFORE ACQUISITION
-    
-    f = figure();
-    imbg = flipud(uint8(imgMain));
-    imshow(imbg);
-    title('Select background area in the center of the image');
-    rect = getrect();
-    imgry=imcrop(imbg, rect);
-    
-    Int = round(mean(imgry,[1,2]),3);    %vettore a 3 componenti
-    Int_HSV = round(mean(rgb2hsv(imgry),[1,2]),3);
-    
-    close(f);
 end
 function [flakenum, MAXarea] = flakeFind(flakeimg,Ccorr,Ccorr_HSV,Int_bg,Int_bg_HSV,num)
     global uscope_mm4pix;
@@ -1588,6 +1522,92 @@ function [flakenum, MAXarea] = flakeFind(flakeimg,Ccorr,Ccorr_HSV,Int_bg,Int_bg_
         figure(num);
         montage({MLCbin,flakeimg});
         title(num);
+    end
+end
+function focusCoeffCalc()
+    global hfpts focuspts focuscoeff hf1 hImage;
+    cm = hImage.ContextMenu;
+    for ii=1:length(cm.Children)
+        if strcmp(cm.Children(ii).Text,'[S] go to sample focus')
+            break
+        end
+    end
+    if size(focuspts,1)==3
+        Zv = focuspts(:,3);
+        XY1m = focuspts;
+        XY1m(:,3) = 1;
+        if det(XY1m)~=0
+            focuscoeff = inv(XY1m)*Zv;    
+            hfpts.MarkerFaceColor = [0 1 0];
+            hf1.Name = 'uScope - Camera feed [Focal plane is active]';
+            cm.Children(ii).Enable = 'on';
+        else
+            focuscoeff = [];
+            hfpts.MarkerFaceColor = [1 1 1];
+            hf1.Name = 'uScope - Camera feed [Invalid focal plane]';
+            cm.Children(ii).Enable = 'off';
+        end
+    else
+        focuscoeff = []; 
+        hfpts.MarkerFaceColor = [1 1 1];
+        hf1.Name = sprintf('uScope - Camera feed [%d focal points]',size(focuspts,1));
+        cm.Children(ii).Enable = 'off';
+    end
+end
+function overviewMarkerUpdate(pos)
+    global hActPos uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
+    xv = [-1  1  1 -1 -1]*uscope_sizex/2*uscope_mm4pix;
+    yv = [-1 -1  1  1 -1]*uscope_sizey/2*uscope_mm4pix;
+    hActPos.XData = ( 0+pos(1)+xv+uscope_sizex/2*uscope_mm4pix)*overview_pix4mm;
+    hActPos.YData = ( 0+pos(2)+yv+uscope_sizey/2*uscope_mm4pix)*overview_pix4mm;
+end
+function overviewStore()
+    global overview_pix4mm uscope_sizex uscope_sizey uscope_mm4pix
+    global cropsize hOverview imgMain XYZ;
+    npx = overview_pix4mm/((uscope_sizex-2*cropsize)*uscope_mm4pix)+1;
+    npy = overview_pix4mm/((uscope_sizey-2*cropsize)*uscope_mm4pix)+1;
+    xv1 = round(linspace(1+cropsize,uscope_sizex-cropsize,npx));
+    yv1 = round(linspace(1+cropsize,uscope_sizey-cropsize,npy));
+    iyv = round((0+yv1*uscope_mm4pix+XYZ(2))*overview_pix4mm);
+    ixv = round((0+xv1*uscope_mm4pix+XYZ(1))*overview_pix4mm);
+    hOverview.CData(iyv,ixv,1:3) = imgMain(yv1,xv1,1:3);
+end
+function setColorScheme(nc)
+    global ncolor hImage;
+    ncolor = nc;
+    cm     = hImage.ContextMenu;
+    nmen   = length(cm.Children);
+    for ii=nmen-3:nmen
+        cm.Children(ii).Checked = 'off';
+    end
+    cm.Children(nmen-ncolor).Checked = 'on';
+end
+function [Int,Int_HSV]=pickBgnd()
+    global imgMain;
+    
+    %%ADD NAVIGATION FEATURE BEFORE ACQUISITION
+    
+    f = figure();
+    imbg = flipud(uint8(imgMain));
+    imshow(imbg);
+    title('Select background area in the center of the image');
+    rect = getrect();
+    imgry=imcrop(imbg, rect);
+    
+    Int = round(mean(imgry,[1,2]),3);    %vettore a 3 componenti
+    Int_HSV = round(mean(rgb2hsv(imgry),[1,2]),3);
+    
+    close(f);
+end
+function zcursorUpdate(pos,value)
+    global hzCurs overlayColor;
+    pos = max(min(pos,1),-1);
+    hzCurs.Position(2) = pos;
+    hzCurs.String = num2str(value,'%+.3f');
+    if(abs(pos)>0.75)
+        hzCurs.BackgroundColor = overlayColor/2;
+    else
+        hzCurs.BackgroundColor = overlayColor;
     end
 end
 
