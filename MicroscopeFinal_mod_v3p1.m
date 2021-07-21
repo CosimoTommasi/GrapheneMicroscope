@@ -18,7 +18,7 @@ global overlayColor textColor dnx dny;
 global tau valmax;
 global timScope;
 global flag_tracking flag_membraneMotor;
-global membraneZero;
+global membraneZero membrane_zLim;
 
 tau              = 1; 
 uscope_mm4pix_Vec = [4.3e-4, 1.85e-4];  % Zoom 3 e Zoom 7 (fondoscala)
@@ -37,6 +37,7 @@ valmax           = 200;
 ncolor           = 0;
 flag_tracking = false;
 flag_membraneMotor = true;
+membrane_zLim = 18.2;
 % -------------------------------------------------------------------------
 % Parameters import from txt file
 FID = fopen('Microscope_parameters.txt');
@@ -865,7 +866,7 @@ function eMove(sou,eve)
     global hf3 h3WinSq h3WinBL h3WinTR;
     global uscope_sizex uscope_sizey uscope_mm4pix overview_pix4mm;
     global XYZ;
-    global flag_tracking membraneFocus deltaZ
+    global flag_tracking membraneFocus deltaZ membrane_zLim
     clickpt  = sou.UserData.Event.IntersectionPoint;
     clicksou = sou.UserData.Source;
     
@@ -917,7 +918,7 @@ function eMove(sou,eve)
                 hz.SetAbsMovePos(0,newz);
                 hz.MoveAbsolute(0,false);
                 if flag_tracking
-                    if (deltaZ - newz) > 18
+                    if (deltaZ - newz) > membrane_zLim
                         warndlg('ABORTED: target value would cause crashing on the base plane. Tracking is now out of focus.');
                         return
                     end
@@ -1003,7 +1004,7 @@ function eMove(sou,eve)
     end
 end
 function eMoveMembrane(sou,eve)
-    global flag_tracking
+    global flag_tracking membrane_zLim
     if flag_tracking
         warndlg('Cannot move membrane while tracking!');
         return
@@ -1017,7 +1018,7 @@ function eMoveMembrane(sou,eve)
         return
     end
     target = str2num(answer{1});
-    if target > 18
+    if target > membrane_zLim
         warndlg('ABORTED: target value would cause crashing on the base plane');
         return
     end
