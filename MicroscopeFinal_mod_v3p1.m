@@ -1292,7 +1292,10 @@ function motorFocalPlane(target)
 %         hz.SetAbsMovePos(0,zval);
 %         hz.MoveAbsolute(0,0);
 %     end
-    if ~isempty(focuscoeff) && ~isempty(membraneFocus) && hz.GetPosition_Position(0) ~= membraneFocus
+    if ~isempty(focuscoeff)
+        if ~isempty(membraneFocus) && (hz.GetPosition_Position(0) == membraneFocus)
+            return
+        end
         zval = focuscoeff(1)*target(1) ...
              + focuscoeff(2)*target(2)+focuscoeff(3);
         hz.SetAbsMovePos(0,zval);
