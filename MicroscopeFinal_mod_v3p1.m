@@ -2,8 +2,8 @@
 %  Microscope
 % -------------------------------------------------------------------------
 % Versione 210430
-close all;
-clear all;
+% close all;
+% clear all;
 clear timScope;
 
 % Parameters
@@ -317,7 +317,8 @@ function eBgndLoad(sou,eve)
             bgndStore(double(tmp));
         end
     end
-    endfunction eFPadd(sou,eve)
+end
+function eFPadd(sou,eve)
     global focuspts XYZ hfpts;
     npts = size(focuspts,1);
     if npts<3
@@ -432,19 +433,6 @@ function eExit(sou,eve)
     hzCurs.ButtonDownFcn = [];
     hCross.ButtonDownFcn = [];
     timScope.delete();
-end
-function eFPadd(sou,eve)
-    global focuspts hfpts XYZ;
-    npt = size(focuspts,1);
-    if npt<3
-        focuspts(npt+1,1) = XYZ(1);
-        focuspts(npt+1,2) = XYZ(2);
-        focuspts(npt+1,3) = XYZ(3);
-        newpt = overviewMm2pix(XYZ(1:2));
-        hfpts.XData(npt+1) = newpt(1); 
-        hfpts.YData(npt+1) = newpt(2); 
-    end
-    focusCoeffCalc(); 
 end
 function eFPreset(sou,eve)
     global focuspts hfpts;
