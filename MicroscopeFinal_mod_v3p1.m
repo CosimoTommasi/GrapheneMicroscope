@@ -757,12 +757,10 @@ function eMapStart(sou,eve)
     
     if uscope_mm4pix > 4e-4
         timeup = 3;
-        timedown = 0.8;
     else
         timeup = 2.2;
-        timedown = 1/2.7;
     end
-    timetot = (nx+1)*(ny+1)*(timeup + timedown);  %estimated total map time
+    timetot = (nx)*(ny+2)*timeup;  %estimated total map time
     mintot = floor(timetot/60);
     sectot = floor(mod(timetot,60));
     
@@ -777,6 +775,9 @@ function eMapStart(sou,eve)
         for ix = (-nx/2):(nx/2)
             pt(1) = + ix*(uscope_sizex-overlap)*uscope_mm4pix;
             for iy = (-ny/2):(ny/2)
+                if mod(ix+nx/2+1,2)==0
+                    iy = -iy;
+                end
                 pt(2) = + iy*(uscope_sizey-overlap)*uscope_mm4pix;
                 motorGoToXY([mapc 0]+pt,true);
                 pause(1);
@@ -811,6 +812,9 @@ function eMapStart(sou,eve)
         for ix = (-nx/2):(nx/2)
             pt(1) = + ix*(uscope_sizex-overlap)*uscope_mm4pix;
             for iy = (-ny/2):(ny/2)
+                if mod(ix+nx/2+1,2)==0
+                    iy = -iy;
+                end
                 pt(2) = + iy*(uscope_sizey-overlap)*uscope_mm4pix;
                 motorGoToXY([mapc 0]+pt,true);
                 pause(1);
