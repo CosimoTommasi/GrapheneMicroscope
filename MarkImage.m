@@ -31,7 +31,8 @@ while flag
     y = round(0.852*H);
     h = round(0.0185*H);
     w = round(marker/um4pix);
-    x = round(W*0.9323 - w);
+    x = round(W*0.9323 - w);    %Marker on the right
+%     x = round(W*(1-0.9323));    %Marker on the left
     
     % Marker application
     f=figure();
