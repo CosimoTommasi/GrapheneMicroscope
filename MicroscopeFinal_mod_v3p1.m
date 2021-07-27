@@ -1,9 +1,6 @@
 % =========================================================================
 %  Microscope
 % -------------------------------------------------------------------------
-% Versione 210430
-% close all;
-% clear all;
 clear timScope;
 
 % Parameters
@@ -57,7 +54,7 @@ fact = [1 1 0.5]*283380;
 if isempty(cam)
     cam = webcam(1);
 end
-if ~exist('hfmotor')
+if ~exist('hfmotor','var')
     APT_init;
 end
 if flag_membraneMotor 
@@ -1108,6 +1105,13 @@ function eScopeRefresh(sou,eve)
     global cam imgMain imgBackgnd;
     global hzCurs hImage hhist hhist2 h1WinSq h1WinBL h1WinTR; 
     global tau XYZ ncolor valmax;
+    global hf1 hf2 hf3 timScope;
+    
+    if ~ishandle(hf1) || ~ishandle(hf2) || ~ishandle(hf3)
+        timScope.stop();
+        timScope.delete();
+        return;
+    end
     % ---------------------------------------------------------------------
     % 1. Integration and XYZ update (double serve?)
     XYZ = motorReadXYZ();
