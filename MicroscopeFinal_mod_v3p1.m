@@ -37,7 +37,7 @@ valmax           = 200;
 ncolor           = 0;
 flag_tracking = false;
 flag_membraneMotor = true;
-membrane_zLim = 18.2;
+membrane_zLim = 22.0;
 % -------------------------------------------------------------------------
 % Parameters import from txt file
 FID = fopen('Microscope_parameters.txt');
